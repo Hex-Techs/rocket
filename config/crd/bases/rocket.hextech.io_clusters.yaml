@@ -1,0 +1,173 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.11.2
+  creationTimestamp: null
+  name: clusters.rocket.hextech.io
+spec:
+  group: rocket.hextech.io
+  names:
+    kind: Cluster
+    listKind: ClusterList
+    plural: clusters
+    singular: cluster
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.area
+      name: AREA
+      type: string
+    - jsonPath: .spec.region
+      name: REGION
+      type: string
+    - jsonPath: .spec.environment
+      name: EVNIRONMENT
+      type: string
+    - jsonPath: .status.state
+      name: STATE
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: AGE
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Cluster is the Schema for the clusters API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: ClusterSpec defines the desired state of Cluster
+            properties:
+              apiServer:
+                description: the cluster connect api server
+                type: string
+              area:
+                description: public or private
+                enum:
+                - ded
+                - pub
+                type: string
+              caData:
+                format: byte
+                type: string
+              certData:
+                format: byte
+                type: string
+              environment:
+                description: prod, pre or test
+                enum:
+                - pd
+                - pre
+                - tst
+                type: string
+              id:
+                description: ID is the uid for this cluster.
+                type: string
+              keyData:
+                format: byte
+                type: string
+              region:
+                description: Region is the region of the cluster, e.g. ap-beijing.
+                  Now, only support ap-beijing and ap-guangzhou.
+                enum:
+                - ap-beijing
+                - ap-guangzhou
+                type: string
+              taints:
+                description: Taints is the taint of the cluster
+                items:
+                  description: The node this Taint is attached to has the "effect"
+                    on any pod that does not tolerate the Taint.
+                  properties:
+                    effect:
+                      description: Required. The effect of the taint on pods that
+                        do not tolerate the taint. Valid effects are NoSchedule, PreferNoSchedule
+                        and NoExecute.
+                      type: string
+                    key:
+                      description: Required. The taint key to be applied to a node.
+                      type: string
+                    timeAdded:
+                      description: TimeAdded represents the time at which the taint
+                        was added. It is only written for NoExecute taints.
+                      format: date-time
+                      type: string
+                    value:
+                      description: The taint value corresponding to the taint key.
+                      type: string
+                  required:
+                  - effect
+                  - key
+                  type: object
+                type: array
+              token:
+                description: serviceaccount token to connect with agent clustr
+                format: byte
+                type: string
+            type: object
+          status:
+            description: ClusterStatus defines the observed state of Cluster
+            properties:
+              allocatable:
+                additionalProperties:
+                  anyOf:
+                  - type: integer
+                  - type: string
+                  pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                  x-kubernetes-int-or-string: true
+                description: allocatable the allocatable resources of the cluster
+                type: object
+              capacity:
+                additionalProperties:
+                  anyOf:
+                  - type: integer
+                  - type: string
+                  pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                  x-kubernetes-int-or-string: true
+                description: capacity the capacity resources of the cluster
+                type: object
+              id:
+                description: Cluster ID, it is tke id when cluster in tencent cloud,
+                  the other is generated id
+                type: string
+              kubernetesVersion:
+                description: kubernetes version
+                type: string
+              lastKeepAliveTime:
+                description: the last time heartbeat from agent
+                format: date-time
+                type: string
+              readyNodeCount:
+                description: ready node count of the kubernetes cluster
+                type: integer
+              state:
+                default: Pending
+                description: the state of the cluster
+                enum:
+                - Pending
+                - Approved
+                - Rejected
+                - Offline
+                type: string
+              unhealthNodeCount:
+                description: unhealth node count of the kubernetes cluster
+                type: integer
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

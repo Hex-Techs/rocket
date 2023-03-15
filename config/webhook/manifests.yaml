@@ -1,0 +1,77 @@
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  creationTimestamp: null
+  name: mutating-webhook-configuration
+webhooks:
+- admissionReviewVersions:
+  - v1
+  - v1beta1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /mutate-rocket-hextech-io-v1beta1-application
+  failurePolicy: Fail
+  name: mapplication.kb.io
+  rules:
+  - apiGroups:
+    - rocket.hextech.io
+    apiVersions:
+    - v1beta1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - application
+  sideEffects: None
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  creationTimestamp: null
+  name: validating-webhook-configuration
+webhooks:
+- admissionReviewVersions:
+  - v1
+  - v1beta1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-rocket-hextech-io-v1beta1-application
+  failurePolicy: Fail
+  name: vapplication.kb.io
+  rules:
+  - apiGroups:
+    - rocket.hextech.io
+    apiVersions:
+    - v1beta1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - application
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  - v1beta1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-rocket-hextech-io-v1alpha1-template
+  failurePolicy: Fail
+  name: vtemplate.kb.io
+  rules:
+  - apiGroups:
+    - rocket.hextech.io
+    apiVersions:
+    - v1beta1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - templates
+  sideEffects: None

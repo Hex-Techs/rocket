@@ -1,0 +1,47 @@
+apiVersion: rocket.hextech.io/v1alpha1
+kind: Template
+metadata:
+  name: sample
+  # namespace: sample
+spec:
+  workloadType: server
+  applyScope:
+    allowOverlap: true
+    cloudAreas:
+      - public
+  parameters:
+    - name: memrequest
+      type: string
+      description: "this is mem request"
+      default: "64Mi"
+    - name: sleep
+      type: number
+      description: "sleep 5s"
+      default: "5"
+    - name: testip
+      type: string
+      description: "test ip"
+      default: "1.1.1.1"
+  hostAliases:
+    - hostnames:
+      - test.com
+      ip: "[fromParam(testip)]"
+  containers:
+    - name: test
+      image: nginx:1.16
+      resources:
+        cpu:
+          limits: 300m
+          requests: 50m
+        memory:
+          limits: 128Mi
+          requests: "[fromParam(memrequest)]"
+        ephemeralStorage:
+          limits: 10Gi
+          requests: 5Gi
+      lifecycle:
+        postStart:
+          exec:
+            command:
+              - sleep
+              - "[fromParam(sleep)]"
