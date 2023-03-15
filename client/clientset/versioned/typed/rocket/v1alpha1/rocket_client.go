@@ -29,6 +29,7 @@ type RocketV1alpha1Interface interface {
 	RESTClient() rest.Interface
 	ApplicationsGetter
 	ClustersGetter
+	DistributionsGetter
 	TemplatesGetter
 	WorkloadsGetter
 }
@@ -44,6 +45,10 @@ func (c *RocketV1alpha1Client) Applications(namespace string) ApplicationInterfa
 
 func (c *RocketV1alpha1Client) Clusters() ClusterInterface {
 	return newClusters(c)
+}
+
+func (c *RocketV1alpha1Client) Distributions(namespace string) DistributionInterface {
+	return newDistributions(c, namespace)
 }
 
 func (c *RocketV1alpha1Client) Templates(namespace string) TemplateInterface {

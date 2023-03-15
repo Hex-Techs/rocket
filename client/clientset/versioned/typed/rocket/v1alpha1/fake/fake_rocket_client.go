@@ -35,6 +35,10 @@ func (c *FakeRocketV1alpha1) Clusters() v1alpha1.ClusterInterface {
 	return &FakeClusters{c}
 }
 
+func (c *FakeRocketV1alpha1) Distributions(namespace string) v1alpha1.DistributionInterface {
+	return &FakeDistributions{c, namespace}
+}
+
 func (c *FakeRocketV1alpha1) Templates(namespace string) v1alpha1.TemplateInterface {
 	return &FakeTemplates{c, namespace}
 }

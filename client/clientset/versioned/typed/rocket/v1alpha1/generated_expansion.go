@@ -21,6 +21,8 @@ type ApplicationExpansion interface{}
 
 type ClusterExpansion interface{}
 
+type DistributionExpansion interface{}
+
 type TemplateExpansion interface{}
 
 type WorkloadExpansion interface{}

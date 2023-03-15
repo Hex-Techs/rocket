@@ -29,6 +29,14 @@ type ApplicationNamespaceListerExpansion interface{}
 // ClusterLister.
 type ClusterListerExpansion interface{}
 
+// DistributionListerExpansion allows custom methods to be added to
+// DistributionLister.
+type DistributionListerExpansion interface{}
+
+// DistributionNamespaceListerExpansion allows custom methods to be added to
+// DistributionNamespaceLister.
+type DistributionNamespaceListerExpansion interface{}
+
 // TemplateListerExpansion allows custom methods to be added to
 // TemplateLister.
 type TemplateListerExpansion interface{}

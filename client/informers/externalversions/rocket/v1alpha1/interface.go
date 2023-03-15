@@ -27,6 +27,8 @@ type Interface interface {
 	Applications() ApplicationInformer
 	// Clusters returns a ClusterInformer.
 	Clusters() ClusterInformer
+	// Distributions returns a DistributionInformer.
+	Distributions() DistributionInformer
 	// Templates returns a TemplateInformer.
 	Templates() TemplateInformer
 	// Workloads returns a WorkloadInformer.
@@ -52,6 +54,11 @@ func (v *version) Applications() ApplicationInformer {
 // Clusters returns a ClusterInformer.
 func (v *version) Clusters() ClusterInformer {
 	return &clusterInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+}
+
+// Distributions returns a DistributionInformer.
+func (v *version) Distributions() DistributionInformer {
+	return &distributionInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
 
 // Templates returns a TemplateInformer.

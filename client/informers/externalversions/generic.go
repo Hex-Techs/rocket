@@ -56,6 +56,8 @@ func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Rocket().V1alpha1().Applications().Informer()}, nil
 	case v1alpha1.SchemeGroupVersion.WithResource("clusters"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Rocket().V1alpha1().Clusters().Informer()}, nil
+	case v1alpha1.SchemeGroupVersion.WithResource("distributions"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Rocket().V1alpha1().Distributions().Informer()}, nil
 	case v1alpha1.SchemeGroupVersion.WithResource("templates"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Rocket().V1alpha1().Templates().Informer()}, nil
 	case v1alpha1.SchemeGroupVersion.WithResource("workloads"):
