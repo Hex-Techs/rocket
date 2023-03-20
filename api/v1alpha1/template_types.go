@@ -25,13 +25,13 @@ type WorkloadType string
 
 const (
 	// Long-Running workload type, it is 'CloneSet'.
-	Server WorkloadType = "server"
+	Stateless WorkloadType = "stateless"
 	// Long-Running workload type, it is 'StatefulSet'.
-	Worker WorkloadType = "worker"
+	Stateful WorkloadType = "stateful"
 	// One-Time workload type and periodic execution, it is 'CronJob'.
-	Task WorkloadType = "task"
+	CronTask WorkloadType = "cronTask"
 	// One-Time workload type and execute only once, it is 'Job'.
-	SingletonTask WorkloadType = "singletonTask"
+	Task WorkloadType = "task"
 )
 
 // TemplateSpec defines the desired state of Template
@@ -39,7 +39,7 @@ type TemplateSpec struct {
 	// The Template workloadType.
 	// +required
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:Enum=server;worker;task;singletonTask
+	// +kubebuilder:validation:Enum=stateless;stateful;cronTask;task
 	WorkloadType WorkloadType `json:"workloadType,omitempty"`
 	// The Template working range.
 	// +kubebuilder:validation:Required
@@ -54,6 +54,9 @@ type TemplateSpec struct {
 	// The container setting for this template.
 	// +optional
 	Containers []Container `json:"containers,omitempty"`
+	// JobOptions is the options for job.
+	// +optional
+	JobOptions *JobOptions `json:"jobOptions,omitempty"`
 }
 
 // ApplyScope is a working range of the template
@@ -172,6 +175,36 @@ type ResourceQuantity struct {
 	Limits string `json:"limits,omitempty"`
 	// +optional
 	Requests string `json:"requests,omitempty"`
+}
+
+// JobOptions is the job option for cron
+// only work for cronTask and task
+type JobOptions struct {
+	// schedule is the cron schedule
+	// +required
+	// +kubebuilder:validation:Required
+	Schedule string `json:"schedule,omitempty"`
+	// suspend is the cron suspend
+	// +optional
+	Suspend bool `json:"suspend,omitempty"`
+	// concurrencyPolicy is the cron concurrencyPolicy
+	// +kubebuilder:validation:Enum=Allow;Forbid;Replace
+	ConcurrencyPolicy string `json:"concurrencyPolicy,omitempty"`
+	// successfulJobsHistoryLimit is the cron successfulJobsHistoryLimit
+	// +kubebuilder:default=3
+	SuccessfulJobsHistoryLimit int32 `json:"successfulJobsHistoryLimit,omitempty"`
+	// failedJobsHistoryLimit is the cron failedJobsHistoryLimit
+	// +kubebuilder:default=1
+	FailedJobsHistoryLimit int32 `json:"failedJobsHistoryLimit,omitempty"`
+	// startingDeadlineSeconds is the cron startingDeadlineSeconds
+	// +kubebuilder:default=30
+	StartingDeadlineSeconds int64 `json:"startingDeadlineSeconds,omitempty"`
+	// Backoff limit
+	// +kubebuilder:default=0
+	BackoffLimit int32 `json:"backoffLimit,omitempty"`
+	// Restart policy
+	// +kubebuilder:default=Never
+	RestartPolicy string `json:"restartPolicy,omitempty"`
 }
 
 // ContainerVolume the container volume

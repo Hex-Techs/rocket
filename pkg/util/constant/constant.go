@@ -1,6 +1,6 @@
 package constant
 
-import "github.com/hex-techs/rocket/pkg/util/tools"
+import mapset "github.com/deckarep/golang-set/v2"
 
 // 各类型资源前缀
 const (
@@ -11,4 +11,4 @@ const (
 )
 
 // edge类型的trait的kind目录
-var EdgeTrait = tools.New[string]()
+var EdgeTrait = mapset.NewSet[string]()

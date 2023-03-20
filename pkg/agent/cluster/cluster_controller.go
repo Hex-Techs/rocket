@@ -20,6 +20,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
 
+const ClusterKind = "cluster"
+
 func NewReconciler(mgr manager.Manager) *ClusterReconciler {
 	r := &ClusterReconciler{
 		Client: mgr.GetClient(),

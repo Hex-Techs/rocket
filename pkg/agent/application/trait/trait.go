@@ -14,7 +14,7 @@ var (
 
 func init() {
 	RegisterTrait(PodUnavailableBudgetKind, NewPubTrait())
-	constant.EdgeTrait.Insert(PodUnavailableBudgetKind)
+	constant.EdgeTrait.Add(PodUnavailableBudgetKind)
 }
 
 // trait 的处理事件

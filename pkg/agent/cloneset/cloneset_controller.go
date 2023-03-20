@@ -41,6 +41,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
+const CloneSetKind = "cloneset"
+
 func NewCloneSetReconciler(mgr manager.Manager) *CloneSetReconciler {
 	cfg, err := clustertools.GenerateKubeConfigFromToken(config.Pread().MasterURL,
 		config.Pread().BootstrapToken, nil, 1)

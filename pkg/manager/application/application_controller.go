@@ -22,6 +22,7 @@ import (
 	"strconv"
 	"time"
 
+	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/google/go-cmp/cmp"
 	rocketv1alpha1 "github.com/hex-techs/rocket/api/v1alpha1"
 	"github.com/hex-techs/rocket/pkg/util/condition"
@@ -203,13 +204,13 @@ func (r *ApplicationReconciler) getTemplates(ac *rocketv1alpha1.Application) (
 	templates []*rocketv1alpha1.Template, images map[string][]rocketv1alpha1.ImageDefine, err error) {
 	images = map[string][]rocketv1alpha1.ImageDefine{}
 	for _, c := range ac.Spec.Templates {
-		cmp := &rocketv1alpha1.Template{}
-		err := r.Get(context.TODO(), types.NamespacedName{Namespace: ac.Namespace, Name: c.Name}, cmp)
+		temp := &rocketv1alpha1.Template{}
+		err := r.Get(context.TODO(), types.NamespacedName{Namespace: ac.Namespace, Name: c.Name}, temp)
 		if err != nil {
 			return templates, images, err
 		}
 		images[c.Name] = c.ImageDefine
-		templates = append(templates, cmp)
+		templates = append(templates, temp)
 	}
 	return templates, images, nil
 }
@@ -219,74 +220,67 @@ func (r *ApplicationReconciler) validateTemplateAndParameter(app *rocketv1alpha1
 	conditions := make([]metav1.Condition, 2)
 	conditions[0] = condition.GenerateCondition(TemplateReady, "TemplateAvailable", "all templates available", metav1.ConditionTrue)
 	conditions[1] = condition.GenerateCondition(ParameterReady, "ParameterAvailable", "all parameters available", metav1.ConditionTrue)
-	intersectionArea := tools.New[string]()
+	intersectionArea := mapset.NewSet[string]()
 	kind := rocketv1alpha1.WorkloadType("")
 	templates, images, err := r.getTemplates(app)
 	if err != nil {
 		return kind, []metav1.Condition{condition.GenerateCondition(TemplateReady, "TemplateAvailable", err.Error(), metav1.ConditionFalse)}
 	}
-	for idx, cmp := range templates {
+	for idx, temp := range templates {
 		if idx > 0 {
 			// 所有 template 的 workloadType 必须相同
-			if kind != cmp.Spec.WorkloadType {
+			if kind != temp.Spec.WorkloadType {
 				return kind, []metav1.Condition{condition.GenerateCondition(TemplateReady, "TemplateAvailable",
 					"workloadtypes of all templates must be the same", metav1.ConditionFalse)}
 			}
 		}
-		kind = cmp.Spec.WorkloadType
+		kind = temp.Spec.WorkloadType
 		app.Status.WorkloadType = kind
-		if kind == rocketv1alpha1.Task {
-			an := annotation{cronjobAnnotation: app.Annotations}
-			if an.getSchedule(cmp) == "" {
-				return kind, []metav1.Condition{condition.GenerateCondition(TemplateReady,
-					"TemplateAvailable", "task must set schedule", metav1.ConditionFalse)}
-			}
-		}
 
-		if err := r.validateTemplateOverlap(cmp); err != nil {
+		if err := r.validateTemplateOverlap(temp); err != nil {
 			return kind, []metav1.Condition{condition.GenerateCondition(TemplateReady, "TemplateAvailable", err.Error(), metav1.ConditionFalse)}
 		}
 
-		if err := r.validateTemplateImage(cmp, images[cmp.Name]); err != nil {
+		if err := r.validateTemplateImage(temp, images[temp.Name]); err != nil {
 			return kind, []metav1.Condition{condition.GenerateCondition(TemplateReady, "TemplateAvailable", err.Error(), metav1.ConditionFalse)}
 		}
 
-		areaSet := tools.New[string]()
-		for _, area := range cmp.Spec.ApplyScope.CloudAreas {
-			areaSet.Insert(area)
+		areaSet := mapset.NewSet[string]()
+		for _, area := range temp.Spec.ApplyScope.CloudAreas {
+			areaSet.Add(area)
 		}
 		if idx == 0 {
 			intersectionArea = areaSet
 		}
-		intersectionArea = intersectionArea.Intersection(areaSet)
-		pSet := tools.New[string]()
-		for _, val := range cmp.Spec.Parameters {
-			pSet.Insert(val.Name)
+		intersectionArea = intersectionArea.Intersect(areaSet)
+		pSet := mapset.NewSet[string]()
+		for _, val := range temp.Spec.Parameters {
+			pSet.Add(val.Name)
 		}
 		for _, val := range app.Spec.Templates[idx].ParameterValues {
 			if syntax.SyntaxEngine.ValidateSyntax(val.Value) {
-				if !pSet.Has(val.Name) {
+				if !pSet.Contains(val.Name) {
 					conditions[1] = condition.GenerateCondition(TemplateReady, "ParameterAvailable",
-						fmt.Sprintf("template '%s' parameter cat not found '%s' in parameters", cmp.Name, val.Name),
+						fmt.Sprintf("template '%s' parameter cat not found '%s' in parameters", temp.Name, val.Name),
 						metav1.ConditionFalse)
 					return kind, conditions
 				}
 			}
 		}
-		err = r.validateParameterRequired(app.Spec.Variables, app.Spec.Templates[idx].ParameterValues, cmp)
+		err = r.validateParameterRequired(app.Spec.Variables, app.Spec.Templates[idx].ParameterValues, temp)
 		if err != nil {
 			conditions[1] = condition.GenerateCondition(TemplateReady, "ParameterAvailable",
-				fmt.Sprintf("template '%s' %v", cmp.Name, err),
+				fmt.Sprintf("template '%s' %v", temp.Name, err),
 				metav1.ConditionFalse)
 			return kind, conditions
 		}
 	}
 	// 验证是否在同一 area 中工作
-	if intersectionArea.Len() == 0 {
+	if intersectionArea.Cardinality() == 0 {
 		return kind, []metav1.Condition{condition.GenerateCondition(TemplateReady, "TemplateAvailable",
 			"all templates cannot work in the same cloud area", metav1.ConditionFalse)}
 	}
-	if !intersectionArea.Has(app.Spec.CloudArea) {
+	if !intersectionArea.Contains(app.Spec.CloudArea) {
 		return kind, []metav1.Condition{condition.GenerateCondition(TemplateReady, "TemplateAvailable",
 			fmt.Sprintf("all templates cannot work in '%s' cloud area", app.Spec.CloudArea), metav1.ConditionFalse)}
 	}
@@ -295,7 +289,7 @@ func (r *ApplicationReconciler) validateTemplateAndParameter(app *rocketv1alpha1
 
 // validate the parameter, and validate parameter type
 func (r *ApplicationReconciler) validateParameterRequired(variables []rocketv1alpha1.Variable,
-	parameters []rocketv1alpha1.ParameterValue, cmp *rocketv1alpha1.Template) error {
+	parameters []rocketv1alpha1.ParameterValue, temp *rocketv1alpha1.Template) error {
 	pset := map[string]string{}
 	for _, acp := range parameters {
 		pset[acp.Name] = acp.Value
@@ -304,7 +298,7 @@ func (r *ApplicationReconciler) validateParameterRequired(variables []rocketv1al
 	for _, v := range variables {
 		vset[v.Name] = v.Value
 	}
-	for _, param := range cmp.Spec.Parameters {
+	for _, param := range temp.Spec.Parameters {
 		if v, ok := pset[param.Name]; !ok {
 			// 必要参数如果没有默认值且在配置中没有设置，则会报错
 			if param.Required && param.Default == "" {
@@ -330,22 +324,22 @@ func (r *ApplicationReconciler) validateParameterRequired(variables []rocketv1al
 	return nil
 }
 
-func (r *ApplicationReconciler) validateTemplateOverlap(cmp *rocketv1alpha1.Template) error {
-	if !cmp.Spec.ApplyScope.AllowOverlap &&
-		cmp.Status.UsedAgain == metav1.ConditionFalse &&
-		cmp.Status.NumberOfWorkload > 1 {
-		return fmt.Errorf("reuse of template '%s' is not allowed", cmp.Name)
+func (r *ApplicationReconciler) validateTemplateOverlap(temp *rocketv1alpha1.Template) error {
+	if !temp.Spec.ApplyScope.AllowOverlap &&
+		temp.Status.UsedAgain == metav1.ConditionFalse &&
+		temp.Status.NumberOfWorkload > 1 {
+		return fmt.Errorf("reuse of template '%s' is not allowed", temp.Name)
 	}
 	return nil
 }
 
-func (r *ApplicationReconciler) validateTemplateImage(cmp *rocketv1alpha1.Template, images []rocketv1alpha1.ImageDefine) error {
-	set := tools.New[string]()
-	for _, c := range cmp.Spec.Containers {
-		set.Insert(c.Name)
+func (r *ApplicationReconciler) validateTemplateImage(temp *rocketv1alpha1.Template, images []rocketv1alpha1.ImageDefine) error {
+	set := mapset.NewSet[string]()
+	for _, c := range temp.Spec.Containers {
+		set.Add(c.Name)
 	}
 	for _, i := range images {
-		if !set.Has(i.ContainerName) {
+		if !set.Contains(i.ContainerName) {
 			return fmt.Errorf("not found container '%s' by image", i.ContainerName)
 		}
 	}

@@ -60,6 +60,32 @@ rules:
 - apiGroups:
   - rocket.hextech.io
   resources:
+  - distributions
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - rocket.hextech.io
+  resources:
+  - distributions/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - rocket.hextech.io
+  resources:
+  - distributions/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - rocket.hextech.io
+  resources:
   - templates
   verbs:
   - create

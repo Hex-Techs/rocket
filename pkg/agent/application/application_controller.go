@@ -22,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/google/go-cmp/cmp"
 	rocketv1alpha1 "github.com/hex-techs/rocket/api/v1alpha1"
 	clientset "github.com/hex-techs/rocket/client/clientset/versioned"
@@ -32,7 +33,6 @@ import (
 	"github.com/hex-techs/rocket/pkg/util/condition"
 	"github.com/hex-techs/rocket/pkg/util/config"
 	"github.com/hex-techs/rocket/pkg/util/constant"
-	"github.com/hex-techs/rocket/pkg/util/tools"
 	kclientset "github.com/openkruise/kruise-api/client/clientset/versioned"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -64,8 +64,7 @@ func NewController(
 	kubeclientset kubernetes.Interface,
 	kruiseclientset kclientset.Interface,
 	rocketclientset clientset.Interface,
-	appinformers informers.ApplicationInformer,
-	workloadinformers informers.WorkloadInformer) *Controller {
+	appinformers informers.ApplicationInformer) *Controller {
 
 	// Create event broadcaster
 	// Add application-controller types to the default Kubernetes Scheme so Events can be
@@ -260,15 +259,15 @@ func (c *Controller) syncHandler(key string) error {
 	}
 	// 判断是否属于当前集群
 	if application.DeletionTimestamp.IsZero() && workload != nil {
-		set := tools.New[string]()
+		set := mapset.NewSet[string]()
 		if len(workload.Status.Clusters) == 0 {
 			return nil
 		} else {
 			for _, c := range workload.Status.Clusters {
-				set.Insert(c)
+				set.Add(c)
 			}
 		}
-		if !set.Has(config.Pread().Name) {
+		if !set.Contains(config.Pread().Name) {
 			klog.V(4).Infof("workload '%s' not contain current cluster(%s), skip application '%s'",
 				workload.Name, config.Pread().Name, name)
 			return nil
@@ -286,9 +285,14 @@ func (c *Controller) syncHandler(key string) error {
 	} else {
 		old := c.getOldTrait(application.Annotations)
 		new := c.getNewTrait(application.Spec.Traits)
-		removeStr := old.Difference(new)
 		// 获取到需要删除的trait
-		remove := generateRemoveTrait(removeStr.Items())
+		removeStr := []string{}
+		old.Difference(new).Each(func(s string) bool {
+			removeStr = append(removeStr, s)
+			return false
+		})
+		klog.V(4).Infof("application '%s' need remove trait: %v", application.Name, removeStr)
+		remove := generateRemoveTrait(removeStr)
 		if err := c.handleDelete(application.Name, remove, workload, application); err != nil {
 			return err
 		}
@@ -336,26 +340,26 @@ func (c *Controller) handleDelete(tname string, ttmp []rocketv1alpha1.Trait,
 	return nil
 }
 
-func (c *Controller) getOldTrait(anno map[string]string) tools.Set[string] {
+func (c *Controller) getOldTrait(anno map[string]string) mapset.Set[string] {
 	if anno == nil {
-		return tools.New[string]()
+		return mapset.NewSet[string]()
 	}
 	if v, ok := anno[constant.TraitEdgeAnnotation]; !ok {
-		return tools.New[string]()
+		return mapset.NewSet[string]()
 	} else {
-		set := tools.New[string]()
+		set := mapset.NewSet[string]()
 		for _, s := range strings.Split(v, ",") {
-			set.Insert(s)
+			set.Add(s)
 		}
 		return set
 	}
 }
 
-func (c *Controller) getNewTrait(traits []rocketv1alpha1.Trait) tools.Set[string] {
-	set := tools.New[string]()
+func (c *Controller) getNewTrait(traits []rocketv1alpha1.Trait) mapset.Set[string] {
+	set := mapset.NewSet[string]()
 	for _, t := range traits {
 		if _, ok := trait.Traits[t.Kind]; ok {
-			set.Insert(t.Kind)
+			set.Add(t.Kind)
 		}
 	}
 	return set

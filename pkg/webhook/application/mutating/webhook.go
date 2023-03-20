@@ -35,7 +35,7 @@ func (a *ApplicationAnnotator) Handle(ctx context.Context, req admission.Request
 	// 将edge类型的trait kind设置到annotation中
 	et := []string{}
 	for _, c := range app.Spec.Traits {
-		if constant.EdgeTrait.Has(c.Kind) {
+		if constant.EdgeTrait.Contains(c.Kind) {
 			et = append(et, c.Kind)
 		}
 	}

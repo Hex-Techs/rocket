@@ -48,7 +48,7 @@ func getResAndGvk(rd *rocketv1alpha1.Distribution) (*unstructured.Unstructured, 
 
 // bool: is deploy in current cluster
 func match(rd *rocketv1alpha1.Distribution) (*unstructured.Unstructured, *schema.GroupVersionKind, bool, error) {
-	// 获取 resourcedistribution 的集群信息
+	// 获取 distribution 的集群信息
 	var m bool
 	for i, v := range rd.Spec.Targets.IncludedClusters.List {
 		if v.Name == config.Pread().Name {

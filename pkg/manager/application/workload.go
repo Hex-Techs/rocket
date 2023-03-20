@@ -28,7 +28,6 @@ type workloadOption struct {
 	Scheme *runtime.Scheme
 }
 
-// 处理兼容数据
 func (r *workloadOption) generateWorkload(kind rocketv1alpha1.WorkloadType, app *rocketv1alpha1.Application) (
 	*rocketv1alpha1.Workload, error) {
 	l := map[string]string{}
@@ -59,9 +58,9 @@ func (r *workloadOption) generateWorkload(kind rocketv1alpha1.WorkloadType, app 
 			Tolerations: app.Spec.Tolerations,
 		},
 	}
-	// NOTE: The HostAliases is not set in the production environment
+	// NOTE: HostAliases 仅在非生产环境下生效，生产环境下需要使用域名系统
 	switch kind {
-	case rocketv1alpha1.Server:
+	case rocketv1alpha1.Stateless:
 		cloneset, err := r.generateCloneSet(app, l)
 		if err != nil {
 			return nil, err
@@ -70,9 +69,9 @@ func (r *workloadOption) generateWorkload(kind rocketv1alpha1.WorkloadType, app 
 			cloneset.Template.Spec.HostAliases = []v1.HostAlias{}
 		}
 		workload.Spec.Template.CloneSetTemplate = cloneset
-	case rocketv1alpha1.Worker:
+	case rocketv1alpha1.Stateful:
 		workload.Spec.Template.StatefulSetTemlate = r.generateStatefulSet(app)
-	case rocketv1alpha1.Task:
+	case rocketv1alpha1.CronTask:
 		cj, err := r.generateCronJob(app, l)
 		if err != nil {
 			return nil, err
@@ -81,7 +80,7 @@ func (r *workloadOption) generateWorkload(kind rocketv1alpha1.WorkloadType, app 
 			cj.JobTemplate.Spec.Template.Spec.HostAliases = []v1.HostAlias{}
 		}
 		workload.Spec.Template.CronJobTemplate = cj
-	case rocketv1alpha1.SingletonTask:
+	case rocketv1alpha1.Task:
 	}
 	for _, v := range app.Spec.Traits {
 		if traitOption, ok := trait.Traits[v.Kind]; ok {
@@ -95,9 +94,9 @@ func (r *workloadOption) generateWorkload(kind rocketv1alpha1.WorkloadType, app 
 	return workload, nil
 }
 
-func (r *workloadOption) generateCloneSet(ac *rocketv1alpha1.Application, label map[string]string) (
+func (r *workloadOption) generateCloneSet(app *rocketv1alpha1.Application, label map[string]string) (
 	*kruiseappsv1alpha1.CloneSetSpec, error) {
-	podtemplate, diskSize, err := r.generatePod(ac)
+	podtemplate, diskSize, _, err := r.generatePod(app)
 	if err != nil {
 		return nil, err
 	}
@@ -117,7 +116,7 @@ func (r *workloadOption) generateCloneSet(ac *rocketv1alpha1.Application, label 
 		cloneset.VolumeClaimTemplates = append(cloneset.VolumeClaimTemplates,
 			v1.PersistentVolumeClaim{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: ac.Name + "-data-",
+					Name: app.Name + "-data-",
 				},
 				Spec: v1.PersistentVolumeClaimSpec{
 					AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteMany},
@@ -132,49 +131,49 @@ func (r *workloadOption) generateCloneSet(ac *rocketv1alpha1.Application, label 
 	return cloneset, nil
 }
 
-func (r *workloadOption) generateStatefulSet(ac *rocketv1alpha1.Application) *kruiseappsv1alpha1.StatefulSetSpec {
+func (r *workloadOption) generateStatefulSet(app *rocketv1alpha1.Application) *kruiseappsv1alpha1.StatefulSetSpec {
 	return &kruiseappsv1alpha1.StatefulSetSpec{}
 }
 
-func (r *workloadOption) generateCronJob(ac *rocketv1alpha1.Application, label map[string]string) (
+func (r *workloadOption) generateCronJob(app *rocketv1alpha1.Application, label map[string]string) (
 	*batchv1.CronJobSpec, error) {
-	aja := annotation{cronjobAnnotation: ac.Annotations}
 	// cronjob 忽略存储卷的创建
-	podtemplate, _, err := r.generatePod(ac)
+	podtemplate, _, temp, err := r.generatePod(app)
 	if err != nil {
 		return nil, err
 	}
-	if len(ac.Spec.Templates) != 1 {
-		return nil, fmt.Errorf("application templates must be one, got %d", len(ac.Spec.Templates))
+	// 在此处验证了模版的数量，如果不是1，直接报错
+	if len(app.Spec.Templates) != 1 {
+		return nil, fmt.Errorf("application templates must be one, got %d", len(app.Spec.Templates))
 	}
 	cmp := &rocketv1alpha1.Template{}
-	err = r.Get(context.TODO(), types.NamespacedName{Namespace: ac.Namespace, Name: ac.Spec.Templates[0].Name}, cmp)
+	err = r.Get(context.TODO(), types.NamespacedName{Namespace: app.Namespace, Name: app.Spec.Templates[0].Name}, cmp)
 	if err != nil {
 		return nil, err
 	}
-	podtemplate.Spec.RestartPolicy = aja.getRestartPolicy(cmp)
+	podtemplate.Spec.RestartPolicy = v1.RestartPolicy(temp.Spec.JobOptions.RestartPolicy)
 	return &batchv1.CronJobSpec{
-		Schedule:                   aja.getSchedule(cmp),
-		Suspend:                    aja.getSuspend(cmp),
-		SuccessfulJobsHistoryLimit: aja.getSuccessfulJobsHistoryLimit(cmp),
-		FailedJobsHistoryLimit:     aja.getFailedJobsHistoryLimit(cmp),
-		ConcurrencyPolicy:          aja.getConcurrencyPolicy(cmp),
-		StartingDeadlineSeconds:    aja.getStartingDeadlineSeconds(cmp),
+		Schedule:                   temp.Spec.JobOptions.Schedule,
+		Suspend:                    pointer.BoolPtr(temp.Spec.JobOptions.Suspend),
+		SuccessfulJobsHistoryLimit: pointer.Int32Ptr(temp.Spec.JobOptions.SuccessfulJobsHistoryLimit),
+		FailedJobsHistoryLimit:     pointer.Int32Ptr(temp.Spec.JobOptions.FailedJobsHistoryLimit),
+		ConcurrencyPolicy:          batchv1.ConcurrencyPolicy(temp.Spec.JobOptions.ConcurrencyPolicy),
+		StartingDeadlineSeconds:    pointer.Int64Ptr(temp.Spec.JobOptions.StartingDeadlineSeconds),
 		JobTemplate: batchv1.JobTemplateSpec{
 			ObjectMeta: metav1.ObjectMeta{
 				Labels: label,
 			},
 			Spec: batchv1.JobSpec{
-				BackoffLimit:            aja.getBackoffLimit(cmp),
-				TTLSecondsAfterFinished: aja.getTTLSecondsAfterFinished(cmp),
-				Template:                podtemplate,
+				BackoffLimit: pointer.Int32Ptr(temp.Spec.JobOptions.BackoffLimit),
+				// TTLSecondsAfterFinished: pointer.Int32Ptr(temp.Spec.JobOptions.TTLSecondsAfterFinished),
+				Template: podtemplate,
 			},
 		},
 	}, nil
 }
 
-func (r *workloadOption) generatePod(ac *rocketv1alpha1.Application) (
-	v1.PodTemplateSpec, resource.Quantity, error) {
+func (r *workloadOption) generatePod(app *rocketv1alpha1.Application) (
+	v1.PodTemplateSpec, resource.Quantity, *rocketv1alpha1.Template, error) {
 	pod := v1.PodTemplateSpec{
 		Spec: v1.PodSpec{
 			HostAliases: []v1.HostAlias{},
@@ -182,27 +181,28 @@ func (r *workloadOption) generatePod(ac *rocketv1alpha1.Application) (
 		},
 	}
 	diskSize := resource.NewQuantity(0, resource.BinarySI)
-	for _, c := range ac.Spec.Templates {
+	temp := &rocketv1alpha1.Template{}
+	for _, c := range app.Spec.Templates {
 		cmp := &rocketv1alpha1.Template{}
-		err := r.Get(context.TODO(), types.NamespacedName{Namespace: ac.Namespace, Name: c.Name}, cmp)
+		err := r.Get(context.TODO(), types.NamespacedName{Namespace: app.Namespace, Name: c.Name}, cmp)
 		if err != nil {
-			return pod, *diskSize, err
+			return pod, *diskSize, nil, err
 		}
 		p := &parameterHandler{
-			originalVariables:       ac.Spec.Variables,
+			originalVariables:       app.Spec.Variables,
 			originalParameterValues: c.ParameterValues,
 			originalParameters:      cmp.Spec.Parameters,
 		}
 		parameters := p.renderParameter()
 		v, err := r.generateVolume(diskSize, cmp.Spec.Containers, parameters)
 		if err != nil {
-			return pod, *diskSize, err
+			return pod, *diskSize, nil, err
 		}
 		diskSize = v
-		containers, err := r.generateContainer(c.InstanceName, ac.Spec.Environment,
+		containers, err := r.generateContainer(c.InstanceName, app.Spec.Environment,
 			parameters, cmp, c.ImageDefine)
 		if err != nil {
-			return pod, *diskSize, err
+			return pod, *diskSize, nil, err
 		}
 		pod.Spec.Containers = append(pod.Spec.Containers, containers...)
 		for idx, h := range cmp.Spec.HostAliases {
@@ -210,8 +210,10 @@ func (r *workloadOption) generatePod(ac *rocketv1alpha1.Application) (
 			cmp.Spec.HostAliases[idx].IP = stringRender(h.IP, parameters)
 		}
 		pod.Spec.HostAliases = append(pod.Spec.HostAliases, cmp.Spec.HostAliases...)
+		// 使用最后一个模板的数据
+		temp = cmp
 	}
-	return pod, *diskSize, nil
+	return pod, *diskSize, temp, nil
 }
 
 func (r *workloadOption) generateVolume(v *resource.Quantity, containers []rocketv1alpha1.Container,

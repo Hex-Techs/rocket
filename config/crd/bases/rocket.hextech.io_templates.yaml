@@ -864,6 +864,47 @@ spec:
                       type: string
                   type: object
                 type: array
+              jobOptions:
+                description: JobOptions is the options for job.
+                properties:
+                  backoffLimit:
+                    default: 0
+                    description: Backoff limit
+                    format: int32
+                    type: integer
+                  concurrencyPolicy:
+                    description: concurrencyPolicy is the cron concurrencyPolicy
+                    enum:
+                    - Allow
+                    - Forbid
+                    - Replace
+                    type: string
+                  failedJobsHistoryLimit:
+                    default: 1
+                    description: failedJobsHistoryLimit is the cron failedJobsHistoryLimit
+                    format: int32
+                    type: integer
+                  restartPolicy:
+                    default: Never
+                    description: Restart policy
+                    type: string
+                  schedule:
+                    description: schedule is the cron schedule
+                    type: string
+                  startingDeadlineSeconds:
+                    default: 30
+                    description: startingDeadlineSeconds is the cron startingDeadlineSeconds
+                    format: int64
+                    type: integer
+                  successfulJobsHistoryLimit:
+                    default: 3
+                    description: successfulJobsHistoryLimit is the cron successfulJobsHistoryLimit
+                    format: int32
+                    type: integer
+                  suspend:
+                    description: suspend is the cron suspend
+                    type: boolean
+                type: object
               parameters:
                 description: The parameters of this template.
                 items:
@@ -893,10 +934,10 @@ spec:
               workloadType:
                 description: The Template workloadType.
                 enum:
-                - server
-                - worker
+                - stateless
+                - stateful
+                - cronTask
                 - task
-                - singletonTask
                 type: string
             type: object
           status:

@@ -123,12 +123,37 @@ func lifecycleRender(l *v1.Lifecycle, parameters map[string]string) *v1.Lifecycl
 	return l
 }
 
+func probeRender(p *v1.Probe, parameters map[string]string) *v1.Probe {
+	if p == nil {
+		return nil
+	}
+	if p.Exec != nil {
+		// probe的定义只在command中可以使用变量
+		p.Exec.Command = sliceRender(p.Exec.Command, parameters)
+	}
+	return p
+}
+
 // 渲染 string 格式的内容，主要针对 resources 和 hostalias
 func stringRender(str string, parameters map[string]string) string {
 	val := syntax.SyntaxEngine.GetVar(str)
 	if val != "" {
 		return parameters[val]
-	} else {
-		return str
 	}
+	return str
 }
+
+// 将 string 类型的参数转换为 int32 类型
+// func numberRender(str string, parameters map[string]string, dft int32) int32 {
+// val := syntax.SyntaxEngine.GetVar(str)
+// if val != "" {
+// v := parameters[val]
+// i, err := strconv.Atoi(v)
+// if err != nil {
+// klog.V(4).Infof("parse %s to int failed, use default value %d", v, dft)
+// return dft
+// }
+// return int32(i)
+// }
+// return dft
+// }

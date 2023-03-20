@@ -57,8 +57,8 @@ spec:
               area:
                 description: public or private
                 enum:
-                - ded
-                - pub
+                - private
+                - public
                 type: string
               caData:
                 format: byte
@@ -69,9 +69,10 @@ spec:
               environment:
                 description: prod, pre or test
                 enum:
-                - pd
-                - pre
-                - tst
+                - dev
+                - test
+                - staging
+                - prod
                 type: string
               id:
                 description: ID is the uid for this cluster.
@@ -80,11 +81,8 @@ spec:
                 format: byte
                 type: string
               region:
-                description: Region is the region of the cluster, e.g. ap-beijing.
-                  Now, only support ap-beijing and ap-guangzhou.
-                enum:
-                - ap-beijing
-                - ap-guangzhou
+                description: Region is the region of the cluster, e.g. beijing. Now,
+                  only support ap-beijing and ap-guangzhou.
                 type: string
               taints:
                 description: Taints is the taint of the cluster

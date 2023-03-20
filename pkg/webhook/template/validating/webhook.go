@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"strconv"
 
+	mapset "github.com/deckarep/golang-set/v2"
 	rocketv1alpha1 "github.com/hex-techs/rocket/api/v1alpha1"
 	"github.com/hex-techs/rocket/pkg/util/syntax"
-	"github.com/hex-techs/rocket/pkg/util/tools"
 	v1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
@@ -25,13 +25,13 @@ func (a *TemplateAnnotator) Handle(ctx context.Context, req admission.Request) a
 	if err != nil {
 		return admission.Errored(http.StatusBadRequest, err)
 	}
-	pSet := tools.New[string]()
+	pSet := mapset.NewSet[string]()
 	for _, val := range template.Spec.Parameters {
 		// parameter不能重复
-		if pSet.Has(val.Name) {
+		if pSet.Contains(val.Name) {
 			return admission.Denied(fmt.Sprintf("the parameter cannot be repeated '%s'", val.Name))
 		}
-		pSet.Insert(val.Name)
+		pSet.Add(val.Name)
 		if err := validateParmeterLegal(val); err != nil {
 			return admission.Denied(err.Error())
 		}
@@ -82,12 +82,12 @@ func validateParmeterLegal(parameter rocketv1alpha1.Parameter) error {
 }
 
 // Verify whether the 'command' and 'args' in the parameter are legal.
-func validateCommandAndArgs(c []string, parameters tools.Set[string]) error {
+func validateCommandAndArgs(c []string, parameters mapset.Set[string]) error {
 	return validateStringSyntax(c, parameters)
 }
 
 // Verify whether 'fromParemeter' in 'env' is legal.
-func validateEnv(envs []rocketv1alpha1.Env, parameters tools.Set[string]) error {
+func validateEnv(envs []rocketv1alpha1.Env, parameters mapset.Set[string]) error {
 	for idx, val := range envs {
 		if val.Value == "" && val.FromParam == "" {
 			return fmt.Errorf("%s environment must be set 'value' or 'fromParam'", val.Name)
@@ -98,7 +98,7 @@ func validateEnv(envs []rocketv1alpha1.Env, parameters tools.Set[string]) error 
 		if val.FromParam == "" {
 			continue
 		}
-		if parameters.Has(syntax.SyntaxEngine.GetVar(val.FromParam)) {
+		if parameters.Contains(syntax.SyntaxEngine.GetVar(val.FromParam)) {
 			return nil
 		}
 		if idx == len(envs)-1 {
@@ -109,7 +109,7 @@ func validateEnv(envs []rocketv1alpha1.Env, parameters tools.Set[string]) error 
 }
 
 // Verify whether the resources is legal.
-func validateResource(resources *rocketv1alpha1.ContainerResource, parameters tools.Set[string]) error {
+func validateResource(resources *rocketv1alpha1.ContainerResource, parameters mapset.Set[string]) error {
 	if resources == nil {
 		return fmt.Errorf("must set resources for template")
 	}
@@ -131,7 +131,7 @@ func validateResource(resources *rocketv1alpha1.ContainerResource, parameters to
 }
 
 // Verify whether the 'lifecycle' is legal.
-func validateLifecycle(lifecycle *v1.Lifecycle, parameters tools.Set[string]) error {
+func validateLifecycle(lifecycle *v1.Lifecycle, parameters mapset.Set[string]) error {
 	if lifecycle == nil {
 		return nil
 	}
@@ -154,7 +154,7 @@ func validateLifecycle(lifecycle *v1.Lifecycle, parameters tools.Set[string]) er
 }
 
 // Verify the HostAlias's IP is legal
-func validateHostAlias(h []v1.HostAlias, parameters tools.Set[string]) error {
+func validateHostAlias(h []v1.HostAlias, parameters mapset.Set[string]) error {
 	ips := []string{}
 	for _, v := range h {
 		ips = append(ips, v.IP)
@@ -163,11 +163,11 @@ func validateHostAlias(h []v1.HostAlias, parameters tools.Set[string]) error {
 }
 
 // Verify whether the slice item in parameters.
-func validateStringSyntax(slice []string, parameters tools.Set[string]) error {
+func validateStringSyntax(slice []string, parameters mapset.Set[string]) error {
 	for _, s := range slice {
 		if syntax.SyntaxEngine.ValidateSyntax(s) {
 			name := syntax.SyntaxEngine.GetVar(s)
-			if !parameters.Has(name) {
+			if !parameters.Contains(name) {
 				return fmt.Errorf("cat not found '%s' in parameters", name)
 			}
 		}

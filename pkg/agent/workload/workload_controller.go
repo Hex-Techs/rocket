@@ -23,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/google/go-cmp/cmp"
 	rocketv1alpha1 "github.com/hex-techs/rocket/api/v1alpha1"
 	clientset "github.com/hex-techs/rocket/client/clientset/versioned"
@@ -245,22 +246,22 @@ func (c *Controller) syncHandler(key string) error {
 		return nil
 	}
 	// 获取 workload 原有集群的信息
-	oldClusterSet := tools.New[string]()
+	oldClusterSet := mapset.NewSet[string]()
 	if len(workload.Annotations) != 0 {
 		if v, ok := workload.Annotations[constant.LastSchedulerClusterAnnotation]; ok {
 			for _, c := range strings.Split(v, ",") {
-				oldClusterSet.Insert(c)
+				oldClusterSet.Add(c)
 			}
 		}
 	}
 	// 获取 workload 现有的集群信息
-	set := tools.New[string]()
+	set := mapset.NewSet[string]()
 	currentClusters := []string{}
 	if len(workload.Status.Clusters) == 0 {
 		return nil
 	} else {
 		for _, c := range workload.Status.Clusters {
-			set.Insert(c)
+			set.Add(c)
 			currentClusters = append(currentClusters, c)
 		}
 	}
@@ -268,10 +269,10 @@ func (c *Controller) syncHandler(key string) error {
 	// 1、当原有和现有集群信息都不包含本集群时，直接跳过不予处理
 	// 2、当原有集群包含本集群，现有集群不包含，直接走删除逻辑，将本集群内的 cloneset 等负载删除，现有集群则创建
 	// 3、其他情况则走正常的处理流程
-	if !set.Has(config.Pread().Name) && !oldClusterSet.Has(config.Pread().Name) {
+	if !set.Contains(config.Pread().Name) && !oldClusterSet.Contains(config.Pread().Name) {
 		return nil
 	}
-	if !set.Has(config.Pread().Name) && oldClusterSet.Has(config.Pread().Name) {
+	if !set.Contains(config.Pread().Name) && oldClusterSet.Contains(config.Pread().Name) {
 		// 原集群是本集群，新集群不是，处理删除工作负载的逻辑，要保证先创建，后删除
 		for _, v := range currentClusters {
 			if c, ok := workload.Status.Conditions[v]; ok {
@@ -313,7 +314,7 @@ func (c *Controller) syncHandler(key string) error {
 			}
 			workload.Status.Conditions[config.Pread().Name] = condition.GenerateCondition("CronJob", "CronJob", err.Error(), metav1.ConditionFalse)
 		}
-		workload.Status.Type = rocketv1alpha1.Task
+		workload.Status.Type = rocketv1alpha1.CronTask
 	}
 	if workload.Spec.Template.CloneSetTemplate != nil {
 		if err := c.handleCloneSet(workload); err != nil {
@@ -322,7 +323,7 @@ func (c *Controller) syncHandler(key string) error {
 			}
 			workload.Status.Conditions[config.Pread().Name] = condition.GenerateCondition("CloneSet", "CloneSet", err.Error(), metav1.ConditionFalse)
 		}
-		workload.Status.Type = rocketv1alpha1.Server
+		workload.Status.Type = rocketv1alpha1.Stateless
 	}
 	// workload.Status.Phase = "Running"
 	// workload status 由其他的控制器更新

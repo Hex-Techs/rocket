@@ -27,21 +27,20 @@ type ClusterSpec struct {
 	// +required
 	// +kubebuilder:validation:Required
 	ID string `json:"id,omitempty"`
-	// Region is the region of the cluster, e.g. ap-beijing.
+	// Region is the region of the cluster, e.g. beijing.
 	// Now, only support ap-beijing and ap-guangzhou.
 	// +required
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:Enum=ap-beijing;ap-guangzhou
 	Region string `json:"region,omitempty"`
 	// public or private
 	// +required
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:Enum=ded;pub
+	// +kubebuilder:validation:Enum=private;public
 	Area string `json:"area,omitempty"`
 	// prod, pre or test
 	// +required
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:Enum=pd;pre;tst
+	// +kubebuilder:validation:Enum=dev;test;staging;prod
 	Environment string `json:"environment,omitempty"`
 	// the cluster connect api server
 	// +optional

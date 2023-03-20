@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"net/http"
 
+	mapset "github.com/deckarep/golang-set/v2"
 	rocketv1alpha1 "github.com/hex-techs/rocket/api/v1alpha1"
 	"github.com/hex-techs/rocket/pkg/util/syntax"
-	"github.com/hex-techs/rocket/pkg/util/tools"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
@@ -25,30 +25,30 @@ func (a *ApplicationAnnotator) Handle(ctx context.Context, req admission.Request
 	}
 
 	// variable中不能出现重复的名字
-	pSet := tools.New[string]()
+	pSet := mapset.NewSet[string]()
 	for _, val := range app.Spec.Variables {
-		if pSet.Has(val.Name) {
+		if pSet.Contains(val.Name) {
 			return admission.Denied(fmt.Sprintf("the variables cannot be repeated '%s'", val.Name))
 		}
-		pSet.Insert(val.Name)
+		pSet.Add(val.Name)
 	}
 
 	// 一种类型的 trait 对于app只能设置一次
-	tset := tools.New[string]()
+	tset := mapset.NewSet[string]()
 	for _, v := range app.Spec.Traits {
-		if tset.Has(v.Kind) {
+		if tset.Contains(v.Kind) {
 			return admission.Errored(http.StatusBadRequest, fmt.Errorf("%s only one can be set", v.Kind))
 		}
-		tset.Insert(v.Kind)
+		tset.Add(v.Kind)
 	}
 
 	// 判断template是否可以重复使用
-	tname := tools.New[string]()
+	tname := mapset.NewSet[string]()
 	for _, temp := range app.Spec.Templates {
-		if tname.Has(temp.Name) {
+		if tname.Contains(temp.Name) {
 			return admission.Denied(fmt.Sprintf("template '%s' can not reuse in one Application", temp.Name))
 		}
-		tname.Insert(temp.Name)
+		tname.Add(temp.Name)
 		for _, val := range temp.ParameterValues {
 			if err := validateStringSyntax(val.Value, pSet); err != nil {
 				return admission.Denied(err.Error())
@@ -64,10 +64,10 @@ func (a *ApplicationAnnotator) InjectDecoder(d *admission.Decoder) error {
 }
 
 // Verify whether the slice item in parameters.
-func validateStringSyntax(s string, parameters tools.Set[string]) error {
+func validateStringSyntax(s string, parameters mapset.Set[string]) error {
 	if syntax.SyntaxEngine.ValidateSyntax(s) {
 		name := syntax.SyntaxEngine.GetVar(s)
-		if !parameters.Has(name) {
+		if !parameters.Contains(name) {
 			return fmt.Errorf("cat not found '%s' in variables", name)
 		}
 	}

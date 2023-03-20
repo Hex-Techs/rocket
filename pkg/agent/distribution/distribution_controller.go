@@ -61,35 +61,35 @@ func NewController(
 		rocketclientset: rocketclientset,
 		rdsLister:       rdsinformers.Lister(),
 		rdsSynced:       rdsinformers.Informer().HasSynced,
-		workqueue:       workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "resourcedistributions"),
+		workqueue:       workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "distributions"),
 	}
 
 	klog.Info("Setting up event handlers")
 	// Set up an event handler for when resources change
 	rdsinformers.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: controller.enqueueResourceDistribution,
+		AddFunc: controller.enqueuedistribution,
 		UpdateFunc: func(old, new interface{}) {
 			oldObj := old.(*rocketv1alpha1.Distribution)
 			newObj := new.(*rocketv1alpha1.Distribution)
 			if !newObj.DeletionTimestamp.IsZero() || !cmp.Equal(oldObj.Spec, newObj.Spec) {
-				controller.enqueueResourceDistribution(newObj)
+				controller.enqueuedistribution(newObj)
 			}
 		},
-		DeleteFunc: controller.enqueueResourceDistribution,
+		DeleteFunc: controller.enqueuedistribution,
 	})
 
 	return controller
 }
 
-// Controller is the controller implementation for resourcedistribution resources
+// Controller is the controller implementation for distribution resources
 type Controller struct {
 	// 当前集群的 clientset 用来创建资源
 	kubeclientset   dynamic.Interface
 	discoveryClient *discovery.DiscoveryClient
-	// 管理集群的 clientset，当发现管理端的 resourcedistribution 资源变化时，触发本集群的修改
+	// 管理集群的 clientset，当发现管理端的 distribution 资源变化时，触发本集群的修改
 	rocketclientset clientset.Interface
 
-	// manager 集群的 resourcedistribution 资源
+	// manager 集群的 distribution 资源
 	rdsLister listers.DistributionLister
 	rdsSynced cache.InformerSynced
 
@@ -113,7 +113,7 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) error {
 	defer c.workqueue.ShutDown()
 
 	// Start the informer factories to begin populating the informer caches
-	klog.Info("Starting ResourceDistribution controller")
+	klog.Info("Starting distribution controller")
 
 	// Wait for the caches to be synced before starting workers
 	klog.Info("Waiting for informer caches to sync")
@@ -121,14 +121,14 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) error {
 		return fmt.Errorf("failed to wait for caches to sync")
 	}
 
-	klog.Info("Starting resourcedistribution workers")
-	// Launch two workers to process ResourceDistribution resources
+	klog.Info("Starting distribution workers")
+	// Launch two workers to process distribution resources
 	for i := 0; i < workers; i++ {
 		go wait.Until(c.runWorker, time.Second, stopCh)
 	}
-	klog.Info("Started resourcedistribution workers")
+	klog.Info("Started distribution workers")
 	<-stopCh
-	klog.Info("Shutting down resourcedistribution workers")
+	klog.Info("Shutting down distribution workers")
 
 	return nil
 }
@@ -175,7 +175,7 @@ func (c *Controller) processNextWorkItem() bool {
 			return nil
 		}
 		// Run the syncHandler, passing it the namespace/name string of the
-		// ResourceDistribution resource to be synced.
+		// distribution resource to be synced.
 		if err := c.syncHandler(key); err != nil {
 			// Put the item back on the workqueue to handle any transient errors.
 			c.workqueue.AddRateLimited(key)
@@ -184,7 +184,7 @@ func (c *Controller) processNextWorkItem() bool {
 		// Finally, if no error occurs we Forget this item so it does not
 		// get queued again until another change happens.
 		c.workqueue.Forget(obj)
-		klog.Infof("Successfully synced resourcedistribution '%s'", key)
+		klog.Infof("Successfully synced distribution '%s'", key)
 		return nil
 	}(obj)
 
@@ -197,7 +197,7 @@ func (c *Controller) processNextWorkItem() bool {
 }
 
 // syncHandler compares the actual state with the desired, and attempts to
-// converge the two. It then updates the Status block of the ResourceDistribution resource
+// converge the two. It then updates the Status block of the distribution resource
 // with the current status of the resource.
 func (c *Controller) syncHandler(key string) error {
 	// Convert the namespace/name string into a distinct namespace and name
@@ -206,13 +206,13 @@ func (c *Controller) syncHandler(key string) error {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
 		return nil
 	}
-	// Get the resourcedistribution resource with this namespace/name
+	// Get the distribution resource with this namespace/name
 	rd, err := c.rdsLister.Distributions(namespace).Get(name)
 	if err != nil {
-		// The ResourceDistribution resource may no longer exist, in which case we stop
+		// The distribution resource may no longer exist, in which case we stop
 		// processing.
 		if errors.IsNotFound(err) {
-			utilruntime.HandleError(fmt.Errorf("resourcedistribution '%s' in work queue no longer exists", key))
+			utilruntime.HandleError(fmt.Errorf("distribution '%s' in work queue no longer exists", key))
 			return nil
 		}
 		return err
@@ -232,7 +232,7 @@ func (c *Controller) syncHandler(key string) error {
 	namespaced, err := namespacedScope(resource, c.discoveryClient)
 	if err != nil {
 		rd.Status.Conditions = c.condition(rd.Status.Conditions, metav1.ConditionFalse, UnknowReason, err.Error())
-		return c.updateResourceDistributionStatus(rd)
+		return c.updatedistributionStatus(rd)
 	}
 	oldCond := c.oldCondition(rd.Status.Conditions)
 	if !rd.DeletionTimestamp.IsZero() {
@@ -253,7 +253,7 @@ func (c *Controller) syncHandler(key string) error {
 				klog.V(4).Infof("delete resource %s/%s is match current cluster", resource.GetNamespace(), resource.GetName())
 				n := rd.Status.Conditions[config.Pread().Name]
 				if !c.equalCondition(oldCond, &n) {
-					return c.updateResourceDistributionStatus(rd)
+					return c.updatedistributionStatus(rd)
 				}
 				return nil
 			}
@@ -282,10 +282,10 @@ func (c *Controller) syncHandler(key string) error {
 			} else {
 				rd.Status.Conditions = c.condition(rd.Status.Conditions, metav1.ConditionTrue, ResourceReadyReason, ResourceReadyMessage)
 			}
-			return c.updateResourceDistributionStatus(rd)
+			return c.updatedistributionStatus(rd)
 		}
 		rd.Status.Conditions = c.condition(rd.Status.Conditions, metav1.ConditionFalse, ResourceReadyReason, err.Error())
-		return c.updateResourceDistributionStatus(rd)
+		return c.updatedistributionStatus(rd)
 	} else {
 		if !m {
 			// 资源存在却没有匹配到当前集群，则可能是之前匹配到过，删除即可
@@ -305,7 +305,7 @@ func (c *Controller) syncHandler(key string) error {
 				klog.V(4).Infof("delete resource %s/%s is not match current cluster", resource.GetNamespace(), resource.GetName())
 				n := rd.Status.Conditions[config.Pread().Name]
 				if !c.equalCondition(oldCond, &n) {
-					return c.updateResourceDistributionStatus(rd)
+					return c.updatedistributionStatus(rd)
 				}
 				return nil
 			}
@@ -323,29 +323,29 @@ func (c *Controller) syncHandler(key string) error {
 		} else {
 			rd.Status.Conditions = c.condition(rd.Status.Conditions, metav1.ConditionTrue, ResourceReadyReason, ResourceReadyMessage)
 		}
-		return c.updateResourceDistributionStatus(rd)
+		return c.updatedistributionStatus(rd)
 	}
 	rd.Status.Conditions = c.condition(rd.Status.Conditions, metav1.ConditionTrue, ResourceReadyReason, ResourceReadyMessage)
-	return c.updateResourceDistributionStatus(rd)
+	return c.updatedistributionStatus(rd)
 }
 
-func (c *Controller) updateResourceDistributionStatus(resourcedistribution *rocketv1alpha1.Distribution) error {
+func (c *Controller) updatedistributionStatus(distribution *rocketv1alpha1.Distribution) error {
 	// NEVER modify objects from the store. It's a read-only, local cache.
 	// You can use DeepCopy() to make a deep copy of original object and modify this copy
 	// Or create a copy manually for better performance
-	resourcedistributionCopy := resourcedistribution.DeepCopy()
+	distributionCopy := distribution.DeepCopy()
 	// If the CustomResourceSubresources feature gate is not enabled,
-	// we must use Update instead of UpdateStatus to update the Status block of the ResourceDistribution resource.
+	// we must use Update instead of UpdateStatus to update the Status block of the distribution resource.
 	// UpdateStatus will not allow changes to the Spec of the resource,
 	// which is ideal for ensuring nothing other than resource status has been updated.
-	_, err := c.rocketclientset.RocketV1alpha1().Distributions(resourcedistribution.Namespace).UpdateStatus(context.TODO(), resourcedistributionCopy, metav1.UpdateOptions{})
+	_, err := c.rocketclientset.RocketV1alpha1().Distributions(distribution.Namespace).UpdateStatus(context.TODO(), distributionCopy, metav1.UpdateOptions{})
 	return err
 }
 
-// enqueueResourceDistribution takes a ResourceDistribution resource and converts it into a namespace/name
+// enqueuedistribution takes a distribution resource and converts it into a namespace/name
 // string which is then put onto the work queue. This method should *not* be
-// passed resources of any type other than ResourceDistribution.
-func (c *Controller) enqueueResourceDistribution(obj interface{}) {
+// passed resources of any type other than distribution.
+func (c *Controller) enqueuedistribution(obj interface{}) {
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
