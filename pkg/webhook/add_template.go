@@ -6,7 +6,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 )
 
-//+kubebuilder:webhook:path=/validate-rocket-hextech-io-v1alpha1-template,mutating=false,failurePolicy=fail,sideEffects=None,groups=rocket.hextech.io,resources=templates,verbs=create;update,versions=v1beta1,name=vtemplate.kb.io,admissionReviewVersions={v1,v1beta1}
+//+kubebuilder:webhook:path=/validate-rocket-hextech-io-v1alpha1-template,mutating=false,failurePolicy=fail,sideEffects=None,groups=rocket.hextech.io,resources=templates,verbs=create;update,versions=v1alpha1,name=vtemplate.kb.io,admissionReviewVersions={v1,v1beta1}
 
 // AddToManager adds a webhook to the manager
 func serveTemplate(mgr manager.Manager) {

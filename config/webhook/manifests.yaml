@@ -12,14 +12,14 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /mutate-rocket-hextech-io-v1beta1-application
+      path: /mutate-rocket-hextech-io-v1alpha1-application
   failurePolicy: Fail
   name: mapplication.kb.io
   rules:
   - apiGroups:
     - rocket.hextech.io
     apiVersions:
-    - v1beta1
+    - v1alpha1
     operations:
     - CREATE
     - UPDATE
@@ -40,14 +40,14 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /validate-rocket-hextech-io-v1beta1-application
+      path: /validate-rocket-hextech-io-v1alpha1-application
   failurePolicy: Fail
   name: vapplication.kb.io
   rules:
   - apiGroups:
     - rocket.hextech.io
     apiVersions:
-    - v1beta1
+    - v1alpha1
     operations:
     - CREATE
     - UPDATE

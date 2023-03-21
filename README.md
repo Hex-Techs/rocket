@@ -1,8 +1,19 @@
 # rocket
 **rocket** 是 `hextech` 平台的核心服务。负责所有 `CRD` 的管理工作
 
-## Getting Started
+[TOC]
+
+## 快速开始
 你需要一个Kubernetes集群来运行。 你可以使用 [k3d](https://k3d.io) 来运行一个本地集群进行测试。
+
+### 通过以下命令生成 token
+```sh
+# linux
+echo "$(head -c 6 /dev/urandom | md5sum | head -c 6)"."$(head -c 16 /dev/urandom | md5sum | head -c 16)"
+
+# mac os
+echo "$(head -c 6 /dev/urandom | md5 | head -c 6)"."$(head -c 16 /dev/urandom | md5 | head -c 16)"
+```
 
 ### Running on the cluster
 1. Install Instances of Custom Resources:

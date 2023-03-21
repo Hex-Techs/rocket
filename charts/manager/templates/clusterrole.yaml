@@ -1,0 +1,128 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: rocket:manager
+rules:
+- apiGroups:
+  - apps
+  resources:
+  - controllerrevisions
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - rocket.hextech.io
+  resources:
+  - clusters
+  - templates
+  - applications
+  - workloads
+  - distributions
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - rocket.hextech.io
+  resources:
+  - clusters/finalizers
+  - templates/finalizers
+  - applications/finalizers
+  - workloads/finalizers
+  - distributions/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - rocket.hextech.io
+  resources:
+  - clusters/status
+  - templates/status
+  - applications/status
+  - workloads/status
+  - distributions/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - batch
+  resources:
+  - cronjobs
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - apps.kruise.io
+  resources:
+  - clonesets
+  - statefulset
+  verbs:
+  - get
+  - list
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: rocket:manager:metrics-reader
+rules:
+- nonResourceURLs:
+  - /metrics
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: rocket:manager:proxy-role
+rules:
+- apiGroups:
+  - authentication.k8s.io
+  resources:
+  - tokenreviews
+  verbs:
+  - create
+- apiGroups:
+  - authorization.k8s.io
+  resources:
+  - subjectaccessreviews
+  verbs:
+  - create
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: rocket:agent
+rules:
+- apiGroups:
+  - rocket.hextech.io
+  resources:
+  - clusters
+  - workloads
+  - distributions
+  verbs:
+  - create
+  - get
+  - update
+  - watch
+  - list
+- apiGroups:
+  - rocket.hextech.io
+  resources:
+  - clusters/status
+  - workloads/status
+  - distributions/status
+  verbs:
+  - get
+  - update
+  - patch

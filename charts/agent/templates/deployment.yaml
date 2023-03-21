@@ -1,0 +1,123 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "agent.fullname" . }}
+  labels:
+    {{- include "agent.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "agent.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "agent.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "agent.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - args:
+          - --secure-listen-address=0.0.0.0:8443
+          - --upstream=http://127.0.0.1:8080/
+          - --logtostderr=true
+          - --v=10
+          image: gcr.io/kubebuilder/kube-rbac-proxy:v0.13.1
+          imagePullPolicy: IfNotPresent
+          name: kube-rbac-proxy
+          ports:
+          - containerPort: 8443
+            name: https
+            protocol: TCP
+        - args:
+          - --health-probe-bind-address=:8081
+          - --metrics-bind-address=127.0.0.1:8080
+          - --leader-elect=true
+          - --v={{ .Values.logLevel | default 3 }}
+          - --name={{ .Values.clustername }}
+          - --bootstrap-token={{ .Values.manager.token }}
+          - --master-url={{ .Values.manager.master }}
+          {{- with .Values.manager.region }}
+          - --region={{ . }}
+          {{- end }}
+          {{- with .Values.manager.area }}
+          - --area={{ . }}
+          {{- end }}
+          {{- with .Values.manager.environment }}
+          - --environment={{ . }}
+          {{- end }}
+          {{- if .Values.kruise.enabled }}
+          - --kruise-enabled=true
+          {{ with .Values.kruise.image }}- --kruise-image={{.}}{{- end }}
+          {{ with .Values.kruise.tag }}- --kruise-image-tag={{.}}{{- end }}
+          {{ with .Values.kruise.resources.limits.cpu }}- --kruise-limit-cpu={{.}}{{- end }}
+          {{ with .Values.kruise.resources.limits.memory }}- --kruise-limit-mem={{.}}{{- end }}
+          {{ with .Values.kruise.resources.requests.cpu }}- --kruise-request-cpu={{.}}{{- end }}
+          {{ with .Values.kruise.resources.requests.memory }}- --kruise-request-mem={{.}}{{- end }}
+          {{ with .Values.kruise.featureGates }}- --kruise-feature-gates={{.}}{{- end }}
+          {{- else }}
+          - --kruise-enabled=false
+          {{- end }}
+          {{- if .Values.keda.enabled }}
+          - --keda-enabled=true
+          {{ with .Values.keda.image }}- --keda-image={{.}}{{- end }}
+          {{ with .Values.keda.tag }}- --keda-image-tag={{.}}{{- end }}
+          {{ with .Values.keda.metricimage }}- --keda-metrics-image={{.}}{{- end }}
+          {{ with .Values.keda.metrictag }}- --keda-metrics-tag={{.}}{{- end }}
+          {{- else }}
+          - --keda-enabled=false
+          {{- end }}
+          command:
+          - /agent
+          name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
+          livenessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /healthz
+              port: 8081
+              scheme: HTTP
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            successThreshold: 1
+            timeoutSeconds: 1
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /readyz
+              port: 8081
+              scheme: HTTP
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 1
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

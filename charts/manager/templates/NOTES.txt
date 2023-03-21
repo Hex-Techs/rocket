@@ -1,0 +1,14 @@
+Get information about the deployed Cluster:
+  kubectl get cluster
+
+Get information about the deployed Template:
+  kubectl get template [--namespace <namespace>]
+
+Get information about the deployed Application:
+  kubectl get application [--namespace <namespace>]
+
+Get information about the deployed Distribution:
+  kubectl get distribution [--namespace <namespace>]
+
+For more information on running Rocket, visit:
+https://github.com/Hex-Techs/rocket
