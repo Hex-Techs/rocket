@@ -1,20 +1,4 @@
-/*
-Copyright2021.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
-package cloneset
+package cronjob
 
 import (
 	"context"
@@ -26,8 +10,8 @@ import (
 	"github.com/hex-techs/rocket/pkg/util/condition"
 	"github.com/hex-techs/rocket/pkg/util/config"
 	"github.com/hex-techs/rocket/pkg/util/constant"
-	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	"golang.org/x/time/rate"
+	batchv1 "k8s.io/api/batch/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -41,23 +25,26 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
-const CloneSetKind = "cloneset"
+const (
+	CronJobKind = "cronjob"
+)
 
-func NewCloneSetReconciler(mgr manager.Manager) *CloneSetReconciler {
+// NewReconcile 返回一个新的 reconcile
+func NewCronJobReconcile(mgr manager.Manager) *CronJobReconciler {
 	cfg, err := clustertools.GenerateKubeConfigFromToken(config.Pread().MasterURL,
 		config.Pread().BootstrapToken, nil, 1)
 	if err != nil {
 		klog.Fatal(err)
 	}
-	return &CloneSetReconciler{
+	return &CronJobReconciler{
 		Client:  mgr.GetClient(),
 		Scheme:  mgr.GetScheme(),
 		rclient: clientset.NewForConfigOrDie(cfg),
 	}
 }
 
-// CloneSetReconciler reconciles a CloneSet object
-type CloneSetReconciler struct {
+// CronJobReconciler reconciles a CronJob object
+type CronJobReconciler struct {
 	client.Client
 	Scheme  *runtime.Scheme
 	rclient clientset.Interface
@@ -65,8 +52,7 @@ type CloneSetReconciler struct {
 
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.8.3/pkg/reconcile
-func (r *CloneSetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	// rocket创建的cloneset，其名称前缀为rocket-，其对应的workload名称为其名称去掉前缀
+func (r *CronJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	if len(req.Name) <= 7 {
 		klog.V(3).Infof("%s without rocket needs no attention", req)
 		return ctrl.Result{}, nil
@@ -75,22 +61,22 @@ func (r *CloneSetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	workload, err := r.rclient.RocketV1alpha1().Workloads(req.Namespace).Get(ctx, wname, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
-			klog.V(1).Infof("can not found Workload '%s', skip this CloneSet '%s'", wname, req)
+			klog.V(1).Infof("can not found Workload '%s', skip this CronJob '%s'", wname, req)
 			return reconcile.Result{}, nil
 		}
 		return ctrl.Result{}, err
 	}
 	obj := workload.DeepCopy()
-	cs := &kruiseappsv1alpha1.CloneSet{}
-	err = r.Client.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: req.Name}, cs)
+	cj := &batchv1.CronJob{}
+	err = r.Client.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: req.Name}, cj)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			if len(obj.Status.Conditions) == 0 {
 				obj.Status.Conditions = make(map[string]metav1.Condition)
 			}
-			obj.Status.Conditions[config.Pread().Name] = condition.GenerateCondition("CloneSet", "CloneSet",
-				fmt.Sprintf("%s has been deleted", req), metav1.ConditionTrue)
-			obj.Status.ClonSetStatus = nil
+			obj.Status.Conditions[config.Pread().Name] = condition.GenerateCondition("CronJob", "CronJob",
+				fmt.Sprintf("%s has been deleted", req), metav1.ConditionFalse)
+			obj.Status.CronjobStatus = nil
 			_, err = r.rclient.RocketV1alpha1().Workloads(req.Namespace).UpdateStatus(ctx, obj, metav1.UpdateOptions{})
 			if err != nil {
 				return ctrl.Result{}, err
@@ -99,14 +85,14 @@ func (r *CloneSetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		}
 		return ctrl.Result{}, err
 	}
-	if w, ok := cs.Labels[constant.WorkloadNameLabel]; ok {
+	if w, ok := cj.Labels[constant.WorkloadNameLabel]; ok {
 		if wname == w {
 			if len(obj.Status.Conditions) == 0 {
 				obj.Status.Conditions = make(map[string]metav1.Condition)
 			}
-			obj.Status.Conditions[config.Pread().Name] = condition.GenerateCondition("CloneSet", "CloneSet",
+			obj.Status.Conditions[config.Pread().Name] = condition.GenerateCondition("CronJob", "CronJob",
 				fmt.Sprintf("%s create successed", req), metav1.ConditionTrue)
-			obj.Status.ClonSetStatus = &cs.Status
+			obj.Status.CronjobStatus = &cj.Status
 			_, err = r.rclient.RocketV1alpha1().Workloads(req.Namespace).UpdateStatus(ctx, obj, metav1.UpdateOptions{})
 			if err != nil {
 				return ctrl.Result{}, err
@@ -117,9 +103,9 @@ func (r *CloneSetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *CloneSetReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *CronJobReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&kruiseappsv1alpha1.CloneSet{}).
+		For(&batchv1.CronJob{}).
 		WithOptions(controller.Options{RateLimiter: workqueue.NewMaxOfRateLimiter(
 			workqueue.NewItemExponentialFailureRateLimiter(5*time.Millisecond, 1000*time.Second),
 			// 10 qps, 100 bucket size for default ratelimiter workqueue

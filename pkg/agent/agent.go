@@ -11,6 +11,7 @@ import (
 	"github.com/hex-techs/rocket/pkg/agent/application"
 	"github.com/hex-techs/rocket/pkg/agent/cloneset"
 	"github.com/hex-techs/rocket/pkg/agent/cluster"
+	"github.com/hex-techs/rocket/pkg/agent/cronjob"
 	"github.com/hex-techs/rocket/pkg/agent/distribution"
 	"github.com/hex-techs/rocket/pkg/agent/workload"
 	"github.com/hex-techs/rocket/pkg/util/clustertools"
@@ -37,9 +38,9 @@ var SupportedSchemeReconciler = map[string]ReconcilerSetupFunc{
 	cloneset.CloneSetKind: func(mgr manager.Manager) error {
 		return cloneset.NewCloneSetReconciler(mgr).SetupWithManager(mgr)
 	},
-	// cronjob.CronJobKind: func(mgr manager.Manager) error {
-	// return cronjob.NewCronJobReconcile(mgr).SetupWithManager(mgr)
-	// },
+	cronjob.CronJobKind: func(mgr manager.Manager) error {
+		return cronjob.NewCronJobReconcile(mgr).SetupWithManager(mgr)
+	},
 }
 
 type EnabledSchemes []string
