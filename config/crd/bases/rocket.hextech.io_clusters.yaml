@@ -137,10 +137,6 @@ spec:
                   x-kubernetes-int-or-string: true
                 description: capacity the capacity resources of the cluster
                 type: object
-              id:
-                description: Cluster ID, it is tke id when cluster in tencent cloud,
-                  the other is generated id
-                type: string
               kubernetesVersion:
                 description: kubernetes version
                 type: string

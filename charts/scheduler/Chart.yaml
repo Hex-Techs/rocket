@@ -1,6 +1,6 @@
 apiVersion: v2
-name: agent
-description: Agent service for hex-tech on Kubernetes
+name: scheduler
+description: Scheduler service for hex-tech on Kubernetes
 
 # A chart can be either an 'application' or a 'library' chart.
 #

@@ -1,9 +1,6 @@
 package constant
 
 const (
-	// RocketNamespace is the namespace of rocket
-	HextechNamespace = "hextech-system"
-
 	// 触发强制刷新，用在template修改后是否触发app的更改
 	FlushAnnotation = "rocket.hextech.io/flush"
 

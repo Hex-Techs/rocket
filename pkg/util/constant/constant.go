@@ -10,5 +10,8 @@ const (
 	JobPrefix         = "rocket"
 )
 
+// RocketNamespace is the namespace of rocket
+const HextechNamespace = "hextech-system"
+
 // edge类型的trait的kind目录
 var EdgeTrait = mapset.NewSet[string]()

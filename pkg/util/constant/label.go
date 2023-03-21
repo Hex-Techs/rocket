@@ -14,4 +14,8 @@ const (
 	GenerateNameLabel = "rocket.hextech.io/generate-name"
 	// rocket的管理label
 	ManagedByRocketLabel = "app.kubernetes.io/managed-by"
+	// 用于设置cloudarea和region的label和环境信息
+	CloudAreaLabel = "rocket.hextech.io/cloud_area"
+	RegionLabel    = "rocket.hextech.io/region"
+	EnvLabel       = "rocket.hextech.io/env"
 )

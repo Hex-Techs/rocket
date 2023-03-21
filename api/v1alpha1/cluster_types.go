@@ -81,8 +81,6 @@ type ClusterStatus struct {
 	State ClusterState `json:"state,omitempty"`
 	// the last time heartbeat from agent
 	LastKeepAliveTime metav1.Time `json:"lastKeepAliveTime,omitempty"`
-	// Cluster ID, it is tke id when cluster in tencent cloud, the other is generated id
-	ID string `json:"id,omitempty"`
 	// kubernetes version
 	KubernetesVersion string `json:"kubernetesVersion,omitempty"`
 	// ready node count of the kubernetes cluster
