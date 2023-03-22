@@ -25,9 +25,11 @@ import (
 	rocketv1alpha1 "github.com/hex-techs/rocket/api/v1alpha1"
 	"github.com/hex-techs/rocket/pkg/util/constant"
 	"github.com/hex-techs/rocket/pkg/util/controllerrevision"
+	"github.com/hex-techs/rocket/pkg/util/tools"
 	"golang.org/x/time/rate"
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/workqueue"
@@ -76,13 +78,41 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{RequeueAfter: waittime}, err
 	}
 	obj := cluster.DeepCopy()
+	if obj.DeletionTimestamp.IsZero() {
+		if !tools.ContainsString(obj.Finalizers, constant.ClusterFinalizer) {
+			obj.Finalizers = append(obj.Finalizers, constant.ClusterFinalizer)
+			if err = r.Update(ctx, obj); err != nil {
+				return ctrl.Result{}, err
+			}
+			return ctrl.Result{}, nil
+		}
+	} else {
+		if tools.ContainsString(obj.Finalizers, constant.ClusterFinalizer) {
+			cr := &appsv1.ControllerRevision{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      obj.Name, // Name is cluster name
+					Namespace: constant.RocketNamespace,
+				},
+			}
+			if err := r.Delete(ctx, cr); err != nil {
+				if !errors.IsNotFound(err) {
+					return ctrl.Result{}, err
+				}
+			}
+			obj.Finalizers = tools.RemoveString(obj.Finalizers, constant.ApplicationFinalizer)
+			if err = r.Update(ctx, obj); err != nil {
+				return ctrl.Result{}, err
+			}
+		}
+	}
+
 	err = r.doReconcile(obj)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 	// predicate 阶段已经确保创建了 controllerrevision 资源
 	cr := &appsv1.ControllerRevision{}
-	err = r.Get(context.TODO(), types.NamespacedName{Namespace: constant.HextechNamespace, Name: cluster.Name}, cr)
+	err = r.Get(ctx, types.NamespacedName{Namespace: constant.RocketNamespace, Name: cluster.Name}, cr)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -124,6 +154,14 @@ func (r *ClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 				}
 				return true
 			},
+			UpdateFunc: func(ue event.UpdateEvent) bool {
+				// 将旧的 cluster 信息，存储到 controllerrevision
+				old := ue.ObjectOld.(*rocketv1alpha1.Cluster)
+				if err := r.handleControllerRevision(old); err != nil {
+					klog.Error(err)
+				}
+				return true
+			},
 		})).
 		WithOptions(controller.Options{RateLimiter: workqueue.NewMaxOfRateLimiter(
 			workqueue.NewItemExponentialFailureRateLimiter(5*time.Millisecond, 1000*time.Second),
@@ -153,7 +191,10 @@ func (r *ClusterReconciler) handleControllerRevision(cluster *rocketv1alpha1.Clu
 			return err
 		}
 		cr = controllerrevision.GenerateCR(cluster)
-		return r.Create(context.TODO(), cr)
+		err = r.Create(context.TODO(), cr)
+		if !errors.IsAlreadyExists(err) {
+			return err
+		}
 	}
 	return nil
 }

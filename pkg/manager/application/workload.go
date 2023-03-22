@@ -58,7 +58,7 @@ func (r *workloadOption) generateWorkload(kind rocketv1alpha1.WorkloadType, app 
 			Tolerations: app.Spec.Tolerations,
 		},
 	}
-	// NOTE: HostAliases 仅在非生产环境下生效，生产环境下需要使用域名系统
+	// TODO: HostAliases 仅在非生产环境下生效，生产环境下需要使用域名系统
 	switch kind {
 	case rocketv1alpha1.Stateless:
 		cloneset, err := r.generateCloneSet(app, l)
@@ -109,7 +109,7 @@ func (r *workloadOption) generateCloneSet(app *rocketv1alpha1.Application, label
 		VolumeClaimTemplates: []v1.PersistentVolumeClaim{},
 		UpdateStrategy: kruiseappsv1alpha1.CloneSetUpdateStrategy{
 			// default InPlaceOnly
-			Type: kruiseappsv1alpha1.InPlaceOnlyCloneSetUpdateStrategyType,
+			Type: kruiseappsv1alpha1.InPlaceIfPossibleCloneSetUpdateStrategyType,
 		},
 	}
 	if !diskSize.IsZero() {

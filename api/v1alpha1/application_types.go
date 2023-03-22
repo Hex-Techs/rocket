@@ -43,7 +43,7 @@ type ApplicationSpec struct {
 	Variables []Variable `json:"variables,omitempty"`
 	// The templates were used by this application.
 	// +optional
-	Templates []ApplicationTemplate `json:"components,omitempty"`
+	Templates []ApplicationTemplate `json:"templates,omitempty"`
 	// The ac this Toleration is attached to tolerates any taint that matches
 	// the triple <key,value,effect> using the matching operator <operator>.
 	// +optional

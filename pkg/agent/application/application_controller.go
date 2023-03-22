@@ -242,7 +242,7 @@ func (c *Controller) syncHandler(key string) error {
 		}
 	}
 	if err != nil {
-		if errors.IsNotFound(err) && application.DeletionTimestamp.IsZero() {
+		if errors.IsNotFound(err) && !application.DeletionTimestamp.IsZero() {
 			// 如果 workload 被删除了，但是 application 还没有被删除，会删除创建的资源并标记 application
 			err = c.handleDelete(application.Name, application.Spec.Traits, workload, application)
 			if err != nil {

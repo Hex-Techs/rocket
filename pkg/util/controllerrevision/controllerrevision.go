@@ -37,7 +37,7 @@ func GenerateCR(cluster *v1alpha1.Cluster) *appsv1.ControllerRevision {
 	return &appsv1.ControllerRevision{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      cluster.Name,
-			Namespace: constant.HextechNamespace,
+			Namespace: constant.RocketNamespace,
 			OwnerReferences: []metav1.OwnerReference{
 				{
 					APIVersion: "rocket.hextech.io/v1alpha1",

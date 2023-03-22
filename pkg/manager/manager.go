@@ -6,6 +6,7 @@ import (
 
 	"github.com/hex-techs/rocket/pkg/manager/application"
 	"github.com/hex-techs/rocket/pkg/manager/cluster"
+	"github.com/hex-techs/rocket/pkg/manager/distribution"
 	"github.com/hex-techs/rocket/pkg/manager/template"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -23,15 +24,12 @@ var (
 
 func Init(mgr ctrl.Manager) {
 	lock.Lock()
-	// for _, v := range config.Pread().Sidecars {
-	// 	applicationconfiguration.Sidecars.Add(v)
-	// }
-	lock.Unlock()
+	defer lock.Unlock()
 	controllers = map[string]SetupWithManagerFunc{
-		"cluster":     cluster.NewRecociler(mgr).SetupWithManager,
-		"template":    template.NewRecociler(mgr).SetupWithManager,
-		"application": application.NewRecociler(mgr).SetupWithManager,
-		// "resourcedistribution":     resourcedistribution.NewReconcile(mgr).SetupWithManager,
+		"cluster":      cluster.NewRecociler(mgr).SetupWithManager,
+		"template":     template.NewRecociler(mgr).SetupWithManager,
+		"application":  application.NewRecociler(mgr).SetupWithManager,
+		"distribution": distribution.NewReconciler(mgr).SetupWithManager,
 	}
 }
 

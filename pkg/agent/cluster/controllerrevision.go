@@ -25,10 +25,10 @@ func handleControllerRevision(id string, mgr manager.Manager) (*appsv1.Controlle
 	if err != nil {
 		return nil, err
 	}
-	cr, err := cli.AppsV1().ControllerRevisions(constant.HextechNamespace).Get(context.TODO(), fmt.Sprintf("%s-agent", config.Pread().Name), metav1.GetOptions{})
+	cr, err := cli.AppsV1().ControllerRevisions(constant.RocketNamespace).Get(context.TODO(), fmt.Sprintf("%s-agent", config.Pread().Name), metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
-			cr, err = cli.AppsV1().ControllerRevisions(constant.HextechNamespace).Create(context.TODO(), generateCR(id), metav1.CreateOptions{})
+			cr, err = cli.AppsV1().ControllerRevisions(constant.RocketNamespace).Create(context.TODO(), generateCR(id), metav1.CreateOptions{})
 			if err != nil {
 				return nil, err
 			}
@@ -44,7 +44,7 @@ func generateCR(id string) *appsv1.ControllerRevision {
 	return &appsv1.ControllerRevision{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      fmt.Sprintf("%s-agent", config.Pread().Name),
-			Namespace: constant.HextechNamespace,
+			Namespace: constant.RocketNamespace,
 		},
 		Data: runtime.RawExtension{
 			Raw: b,

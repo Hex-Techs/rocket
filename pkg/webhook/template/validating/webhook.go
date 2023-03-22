@@ -36,6 +36,11 @@ func (a *TemplateAnnotator) Handle(ctx context.Context, req admission.Request) a
 			return admission.Denied(err.Error())
 		}
 	}
+	for _, v := range template.Spec.ApplyScope.CloudAreas {
+		if v != "public" && v != "private" {
+			return admission.Denied(fmt.Sprintf("cloudArea '%s' is not supported", v))
+		}
+	}
 	if err := validateHostAlias(template.Spec.HostAliases, pSet); err != nil {
 		return admission.Denied(err.Error())
 	}
@@ -53,6 +58,7 @@ func (a *TemplateAnnotator) Handle(ctx context.Context, req admission.Request) a
 			return admission.Denied(fmt.Sprintf("container '%s': %v", template.Name, err))
 		}
 	}
+
 	return admission.Allowed("")
 }
 

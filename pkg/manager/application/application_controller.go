@@ -362,6 +362,7 @@ func (r *ApplicationReconciler) createWorkload(kind rocketv1alpha1.WorkloadType,
 			workloadOwns = append(workloadOwns, w)
 		}
 	}
+	var old *rocketv1alpha1.Workload
 	if len(workloadOwns) > 1 {
 		// 删除多余的workload
 		for _, w := range workloadOwns[1:] {
@@ -370,32 +371,41 @@ func (r *ApplicationReconciler) createWorkload(kind rocketv1alpha1.WorkloadType,
 				return condition.GenerateCondition(WorkloadReady, "WorkloadSyncedReady", err.Error(), metav1.ConditionFalse)
 			}
 		}
-		workloadOwns = workloadOwns[1:]
+		// workloadOwns = workloadOwns[1:]
+		old = &workloadOwns[0]
 	}
-
-	for _, w := range workloadOwns {
+	if old != nil {
 		// Cluster 信息保持原状
-		workload.Status.Clusters = w.Status.Clusters
-		if !cmp.Equal(w.Spec, workload.Spec) ||
-			!cmp.Equal(w.Labels, workload.Labels) {
-			workload.Name = w.Name
-			workload.ResourceVersion = w.ResourceVersion
+		workload.Status.Clusters = old.Status.Clusters
+		if !cmp.Equal(old.Spec, workload.Spec) ||
+			!cmp.Equal(old.Labels, workload.Labels) {
+			workload.Name = old.Name
+			workload.ResourceVersion = old.ResourceVersion
 			err = r.Update(context.TODO(), workload)
 			if err != nil {
 				return condition.GenerateCondition(WorkloadReady, "WorkloadSyncedReady", err.Error(), metav1.ConditionFalse)
 			}
+			return condition.GenerateCondition(WorkloadReady, "WorkloadSyncedReady", "workload synced", metav1.ConditionTrue)
 		} else {
 			return condition.GenerateCondition(WorkloadReady, "WorkloadSyncedReady", "workload synced", metav1.ConditionTrue)
 		}
 	}
 	err = r.Create(context.TODO(), workload)
 	if err != nil {
-		return condition.GenerateCondition(WorkloadReady, "WorkloadSyncedReady", err.Error(), metav1.ConditionFalse)
+		if !errors.IsAlreadyExists(err) {
+			return condition.GenerateCondition(WorkloadReady, "WorkloadSyncedReady", err.Error(), metav1.ConditionFalse)
+		}
 	}
-	workload.Status.Phase = "Pending"
-	err = r.Status().Update(context.TODO(), workload)
-	if err != nil {
-		klog.Errorf("update workload '%s' status with error: %v", workload.Name, err)
-	}
+	// err = r.Get(context.TODO(), types.NamespacedName{Namespace: workload.Namespace, Name: workload.Name}, workload)
+	// if err != nil {
+	// 	klog.Errorf("get workload '%s' with error: %v", workload.Name, err)
+	// 	return condition.GenerateCondition(WorkloadReady, "WorkloadSyncedReady", err.Error(), metav1.ConditionFalse)
+	// }
+	// workload.Status.Phase = "Pending"
+	// err = r.Status().Update(context.TODO(), workload)
+	// if err != nil {
+	// 	klog.Errorf("update workload '%s' status with error: %v", workload.Name, err)
+	// 	return condition.GenerateCondition(WorkloadReady, "WorkloadSyncedReady", err.Error(), metav1.ConditionFalse)
+	// }
 	return condition.GenerateCondition(WorkloadReady, "WorkloadSyncedReady", "workload synced", metav1.ConditionTrue)
 }

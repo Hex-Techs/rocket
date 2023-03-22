@@ -63,9 +63,6 @@ spec:
                     type: boolean
                   cloudAreas:
                     description: Which cloud area the template can be worked.
-                    enum:
-                    - public
-                    - private
                     items:
                       type: string
                     type: array

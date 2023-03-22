@@ -3,7 +3,6 @@ package cluster
 import (
 	"context"
 	"encoding/json"
-	"regexp"
 	"sync"
 	"time"
 
@@ -35,8 +34,6 @@ type register struct {
 	cli rocketclientset.Interface
 	// 当前集群实例
 	currentCluster *rocketv1alpha1.Cluster
-	// 跳过节点的正则
-	nodere *regexp.Regexp
 	// 注册成功后，存储的 token
 	// token string
 	// 参数变量

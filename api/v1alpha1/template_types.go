@@ -64,7 +64,6 @@ type ApplyScope struct {
 	// Which cloud area the template can be worked.
 	// +required
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:Enum=public;private
 	CloudAreas []string `json:"cloudAreas,omitempty"`
 	// Allow multiple references
 	// +kubebuilder:default=true

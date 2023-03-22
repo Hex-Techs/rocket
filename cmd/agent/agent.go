@@ -72,7 +72,7 @@ func main() {
 
 	pflag.BoolVar(&kruiseParam.Enabled, "kruise-enabled", true, "enabled openKruise.")
 	pflag.StringVar(&kruiseParam.Repository, "kruise-image", "openkruise/kruise-manager", "open-kruise image repository")
-	pflag.StringVar(&kruiseParam.Tag, "kruise-image-tag", "v1.0.1", "open-kruise image tag")
+	pflag.StringVar(&kruiseParam.Tag, "kruise-image-tag", "v1.4.0", "open-kruise image tag")
 	pflag.StringVar(&kruiseParam.RequestCPU, "kruise-request-cpu", "200m", "open-kruise request cpu")
 	pflag.StringVar(&kruiseParam.LimitCPU, "kruise-limit-cpu", "1", "open-kruise limit cpu")
 	pflag.StringVar(&kruiseParam.RequestMem, "kruise-request-mem", "256Mi", "open-kruise request memory")

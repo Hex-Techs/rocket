@@ -84,7 +84,7 @@ func (r *SchedulerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 				obj := ue.ObjectNew.(*rocketv1alpha1.Cluster)
 				if obj.Status.State == rocketv1alpha1.Approve {
 					cr := &appsv1.ControllerRevision{}
-					err := r.Get(context.TODO(), types.NamespacedName{Namespace: constant.HextechNamespace, Name: obj.Name}, cr)
+					err := r.Get(context.TODO(), types.NamespacedName{Namespace: constant.RocketNamespace, Name: obj.Name}, cr)
 					if err != nil {
 						klog.Errorf("get controller revision error: %v", err)
 						return

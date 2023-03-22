@@ -1,0 +1,15 @@
+apiVersion: rocket.hextech.io/v1alpha1
+kind: Distribution
+metadata:
+  name: sample
+  namespace: rocket-system
+spec:
+  resource:
+    apiVersion: v1
+    kind: Namespace
+    metadata:
+      name: sample
+  targets:
+    includedClusters:
+      list:
+      - name: rocket01

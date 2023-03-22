@@ -109,6 +109,7 @@ rules:
   resources:
   - clusters
   - workloads
+  - applications
   - distributions
   verbs:
   - create
@@ -121,6 +122,7 @@ rules:
   resources:
   - clusters/status
   - workloads/status
+  - applications/status
   - distributions/status
   verbs:
   - get

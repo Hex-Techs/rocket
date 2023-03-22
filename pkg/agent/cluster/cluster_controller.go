@@ -126,9 +126,6 @@ func (r *ClusterReconciler) kubeVersion(nodes []v1.Node) {
 func (r *ClusterReconciler) clusterNodeCount(nodes []v1.Node) {
 	ready, notReady := 0, 0
 	for _, node := range nodes {
-		if registerInstance.nodere.MatchString(node.Name) {
-			continue
-		}
 		l := len(node.Status.Conditions)
 		for i, cond := range node.Status.Conditions {
 			if cond.Type == v1.NodeReady && cond.Status == v1.ConditionTrue {
@@ -150,9 +147,6 @@ func (r *ClusterReconciler) clusterResouce(nodes []v1.Node) {
 	var capacityCpu, capacityMem, allocatableCpu, allocatableMem resource.Quantity
 	Capacity, Allocatable := make(map[v1.ResourceName]resource.Quantity), make(map[v1.ResourceName]resource.Quantity)
 	for _, node := range nodes {
-		if registerInstance.nodere.MatchString(node.Name) {
-			continue
-		}
 		capacityCpu.Add(*node.Status.Capacity.Cpu())
 		capacityMem.Add(*node.Status.Capacity.Memory())
 		allocatableCpu.Add(*node.Status.Allocatable.Cpu())

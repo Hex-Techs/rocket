@@ -1,0 +1,19 @@
+apiVersion: rocket.hextech.io/v1alpha1
+kind: Application
+metadata:
+  name: test
+  namespace: sample
+spec:
+  regions:
+    - beijing
+  cloudArea: public
+  environment: test
+  variables:
+    - name: ip
+      value: "2.2.2.2"
+  templates:
+    - name: sample
+      instanceName: app
+      parameterValues:
+        - name: testip
+          value: "[fromVariable(ip)]"

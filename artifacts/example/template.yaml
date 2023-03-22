@@ -2,13 +2,13 @@ apiVersion: rocket.hextech.io/v1alpha1
 kind: Template
 metadata:
   name: sample
-  # namespace: sample
+  namespace: sample
 spec:
-  workloadType: server
+  workloadType: stateless
   applyScope:
     allowOverlap: true
     cloudAreas:
-      - public
+    - public
   parameters:
     - name: memrequest
       type: string

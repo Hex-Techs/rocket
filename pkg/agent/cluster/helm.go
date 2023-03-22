@@ -28,7 +28,7 @@ func buildHelm(kubeconfig *rest.Config) error {
 			RepositoryConfig: defaultRepositoryConfig,
 			Debug:            true,
 			Linting:          true,
-			Namespace:        constant.HextechNamespace,
+			Namespace:        constant.RocketNamespace,
 		},
 		RestConfig: kubeconfig,
 	}

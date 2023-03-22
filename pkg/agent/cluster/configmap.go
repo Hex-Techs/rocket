@@ -31,10 +31,10 @@ func configmap(p *agentconfig.ModuleParams, mgr manager.Manager) (*createTag, er
 	if err != nil {
 		return nil, err
 	}
-	cm, err := cli.CoreV1().ConfigMaps(constant.HextechNamespace).Get(ctx, cmName, metav1.GetOptions{})
+	cm, err := cli.CoreV1().ConfigMaps(constant.RocketNamespace).Get(ctx, cmName, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
-			_, err = cli.CoreV1().ConfigMaps(constant.HextechNamespace).Create(ctx, gcm, metav1.CreateOptions{})
+			_, err = cli.CoreV1().ConfigMaps(constant.RocketNamespace).Create(ctx, gcm, metav1.CreateOptions{})
 			if err != nil {
 				return ct, err
 			}
@@ -47,7 +47,7 @@ func configmap(p *agentconfig.ModuleParams, mgr manager.Manager) (*createTag, er
 	kruise := isCreateOrNot("kruise", gcm.Data, cm.DeepCopy().Data)
 	keda := isCreateOrNot("keda", gcm.Data, cm.DeepCopy().Data)
 	if kruise || keda {
-		_, err = cli.CoreV1().ConfigMaps(constant.HextechNamespace).Update(ctx, gcm, metav1.UpdateOptions{})
+		_, err = cli.CoreV1().ConfigMaps(constant.RocketNamespace).Update(ctx, gcm, metav1.UpdateOptions{})
 		if err != nil {
 			return ct, err
 		}
@@ -65,7 +65,7 @@ func generateConfigMap(p *agentconfig.ModuleParams) *v1.ConfigMap {
 	cm := &v1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      cmName,
-			Namespace: constant.HextechNamespace,
+			Namespace: constant.RocketNamespace,
 		},
 		Data: map[string]string{},
 	}

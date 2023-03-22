@@ -64,7 +64,20 @@ spec:
                 - public
                 - private
                 type: string
-              components:
+              environment:
+                description: prod, pre or test
+                enum:
+                - dev
+                - test
+                - staging
+                - prod
+                type: string
+              regions:
+                description: The region of application
+                items:
+                  type: string
+                type: array
+              templates:
                 description: The templates were used by this application.
                 items:
                   description: ApplicationTemplate is the template used by.
@@ -102,19 +115,6 @@ spec:
                         type: object
                       type: array
                   type: object
-                type: array
-              environment:
-                description: prod, pre or test
-                enum:
-                - dev
-                - test
-                - staging
-                - prod
-                type: string
-              regions:
-                description: The region of application
-                items:
-                  type: string
                 type: array
               tolerations:
                 description: The ac this Toleration is attached to tolerates any taint
