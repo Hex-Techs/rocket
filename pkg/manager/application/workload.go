@@ -30,18 +30,18 @@ type workloadOption struct {
 
 func (r *workloadOption) generateWorkload(kind rocketv1alpha1.WorkloadType, app *rocketv1alpha1.Application) (
 	*rocketv1alpha1.Workload, error) {
-	l := map[string]string{}
+	labels := map[string]string{}
 	if app.Labels != nil {
-		l = app.Labels
+		labels = app.Labels
 	}
-	l[constant.AppNameLabel] = app.Name
+	labels[constant.AppNameLabel] = app.Name
 	// workload继承app的annotation和label，workload名称直接使用app的名称
 	workload := &rocketv1alpha1.Workload{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace:   app.Namespace,
 			Name:        app.Name,
 			Annotations: app.Annotations,
-			Labels:      l,
+			Labels:      labels,
 			OwnerReferences: []metav1.OwnerReference{
 				{
 					APIVersion: APIVersion,
@@ -60,7 +60,7 @@ func (r *workloadOption) generateWorkload(kind rocketv1alpha1.WorkloadType, app 
 	}
 	switch kind {
 	case rocketv1alpha1.Stateless:
-		cloneset, err := r.generateCloneSet(app, l)
+		cloneset, err := r.generateCloneSet(app, labels)
 		if err != nil {
 			return nil, err
 		}
@@ -68,11 +68,11 @@ func (r *workloadOption) generateWorkload(kind rocketv1alpha1.WorkloadType, app 
 	case rocketv1alpha1.Stateful:
 		workload.Spec.Template.StatefulSetTemlate = r.generateStatefulSet(app)
 	case rocketv1alpha1.CronTask:
-		cj, err := r.generateCronJob(app, l)
+		cronjob, err := r.generateCronJob(app, labels)
 		if err != nil {
 			return nil, err
 		}
-		workload.Spec.Template.CronJobTemplate = cj
+		workload.Spec.Template.CronJobTemplate = cronjob
 	case rocketv1alpha1.Task:
 	}
 	for _, v := range app.Spec.Traits {
