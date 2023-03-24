@@ -58,15 +58,11 @@ func (r *workloadOption) generateWorkload(kind rocketv1alpha1.WorkloadType, app 
 			Tolerations: app.Spec.Tolerations,
 		},
 	}
-	// TODO: HostAliases 仅在非生产环境下生效，生产环境下需要使用域名系统
 	switch kind {
 	case rocketv1alpha1.Stateless:
 		cloneset, err := r.generateCloneSet(app, l)
 		if err != nil {
 			return nil, err
-		}
-		if app.Spec.Environment != "prod" {
-			cloneset.Template.Spec.HostAliases = []v1.HostAlias{}
 		}
 		workload.Spec.Template.CloneSetTemplate = cloneset
 	case rocketv1alpha1.Stateful:
@@ -75,9 +71,6 @@ func (r *workloadOption) generateWorkload(kind rocketv1alpha1.WorkloadType, app 
 		cj, err := r.generateCronJob(app, l)
 		if err != nil {
 			return nil, err
-		}
-		if app.Spec.Environment != "prod" {
-			cj.JobTemplate.Spec.Template.Spec.HostAliases = []v1.HostAlias{}
 		}
 		workload.Spec.Template.CronJobTemplate = cj
 	case rocketv1alpha1.Task:

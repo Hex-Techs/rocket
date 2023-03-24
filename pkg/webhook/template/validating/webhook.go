@@ -57,6 +57,15 @@ func (a *TemplateAnnotator) Handle(ctx context.Context, req admission.Request) a
 		if err := validateLifecycle(container.Lifecycle, pSet); err != nil {
 			return admission.Denied(fmt.Sprintf("container '%s': %v", template.Name, err))
 		}
+		if err := validateProbe(container.LivenessProbe, pSet); err != nil {
+			return admission.Denied(fmt.Sprintf("container '%s': %v", template.Name, err))
+		}
+		if err := validateProbe(container.StartupProbe, pSet); err != nil {
+			return admission.Denied(fmt.Sprintf("container '%s': %v", template.Name, err))
+		}
+		if err := validateProbe(container.ReadinessProbe, pSet); err != nil {
+			return admission.Denied(fmt.Sprintf("container '%s': %v", template.Name, err))
+		}
 	}
 
 	return admission.Allowed("")
@@ -154,6 +163,19 @@ func validateLifecycle(lifecycle *v1.Lifecycle, parameters mapset.Set[string]) e
 			if err := validateStringSyntax(lifecycle.PostStart.Exec.Command, parameters); err != nil {
 				return err
 			}
+		}
+	}
+	return nil
+}
+
+// verify whether the probe is legal.
+func validateProbe(probe *v1.Probe, parameters mapset.Set[string]) error {
+	if probe == nil {
+		return nil
+	}
+	if probe.Exec != nil {
+		if err := validateStringSyntax(probe.Exec.Command, parameters); err != nil {
+			return err
 		}
 	}
 	return nil
