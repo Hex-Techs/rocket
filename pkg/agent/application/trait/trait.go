@@ -12,7 +12,9 @@ var (
 	Traits = map[string]Trait{}
 )
 
+// 将trait注册到map中，key为trait的kind，value为trait的实例
 func init() {
+	RegisterTrait(ServiceKind, NewServiceTrait())
 	RegisterTrait(PodUnavailableBudgetKind, NewPubTrait())
 	constant.EdgeTrait.Add(PodUnavailableBudgetKind)
 }

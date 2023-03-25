@@ -25,3 +25,4 @@ Dockerfile.cross
 *.swo
 *~
 .vscode
+.Ds_Store
