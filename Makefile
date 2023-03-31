@@ -1,8 +1,6 @@
 
 # Image URL to use all building/pushing image targets
-MANAGER ?= manager:latest
-AGENT ?= agent:latest
-SCHEDULER ?= scheduler:latest
+IMG ?= rocket:latest
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.26.1
 
@@ -19,7 +17,7 @@ SHELL = /usr/bin/env bash -o pipefail
 .SHELLFLAGS = -ec
 
 .PHONY: all
-all: build
+all: docker-build docker-push
 
 ##@ General
 
@@ -62,48 +60,22 @@ test: manifests generate fmt vet envtest ## Run tests.
 
 ##@ Build
 
-.PHONY: build-manager
-build-manager: manifests generate fmt vet ## Build manager binary.
+.PHONY: build
+build: manifests generate fmt vet ## Build manager binary.
 	go build -o bin/manager cmd/manager/manager.go
-
-.PHONY: build-agent
-build-agent: manifests generate fmt vet ## Build agent binary.
 	go build -o bin/agent cmd/agent/agent.go
-
-.PHONY: build-scheduler
-build-scheduler: manifests generate fmt vet ## Build scheduler binary.
 	go build -o bin/scheduler cmd/scheduler/scheduler.go
-
-.PHONY: run
-run: manifests generate fmt vet ## Run a controller from your host.
-	go run ./main.go
 
 # If you wish built the manager image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64 ). However, you must enable docker buildKit for it.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
-.PHONY: docker-manager
-docker-manager: test ## Build docker image with the manager.
-	docker build -t ${MANAGER} -f docker/Dockerfile-manager .
+.PHONY: docker-build
+docker-build: test ## Build docker image with the manager.
+	docker build --no-cache -t ${IMG} .
 
-.PHONY: docker-agent
-docker-agent: test ## Build docker image with the agent.
-	docker build -t ${AGENT} -f docker/Dockerfile-agent .
-
-.PHONY: docker-scheduler
-docker-scheduler: test ## Build docker image with the scheduler.
-	docker build -t ${SCHEDULER} -f docker/Dockerfile-scheduler .
-
-.PHONY: push-manager
-push-manager: ## Push docker image with the manager.
-	docker push ${MANAGER}
-
-.PHONY: push-agent
-push-agent: ## Push docker image with the agent.
-	docker push ${AGENT}
-
-.PHONY: push-scheduler
-push-scheduler: ## Push docker image with the scheduler.
-	docker push ${SCHEDULER}
+.PHONY: docker-push
+push-push: ## Push docker image with the manager.
+	docker push ${IMG}
 
 ##@ Deployment
 
