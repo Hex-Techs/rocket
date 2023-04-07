@@ -5,7 +5,7 @@
 replicaCount: 1
 
 image:
-  repository: agent
+  repository: rocket
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
   tag: "latest"
@@ -20,7 +20,7 @@ logLevel: 2
 
 manager:
   token: "07401b.f395accd246ae52d"
-  master: "https://manager-control-plane:6443"
+  master: "https://rocket01-control-plane:6443"
   region: ""
   area: ""
   environment: ""

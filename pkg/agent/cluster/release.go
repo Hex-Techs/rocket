@@ -20,7 +20,7 @@ const (
 	kruiseRepoName    = "openkruise"
 	kruiseReleaseName = "kruise"
 	kruiseNamespace   = "kruise-system"
-	kruiseRepoVersion = "v1.0.1"
+	kruiseRepoVersion = "v1.4.0"
 
 	// keda
 	kedaRepoURL     = "https://kedacore.github.io/charts"

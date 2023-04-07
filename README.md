@@ -1,8 +1,6 @@
 # rocket
 **rocket** 是 `hextech` 平台的核心服务。负责所有 `CRD` 的管理工作
 
-[TOC]
-
 ## 快速开始
 你需要一个Kubernetes集群来运行。 你可以使用 [k3d](https://k3d.io) 来运行一个本地集群进行测试。
 
@@ -13,6 +11,11 @@ echo "$(head -c 6 /dev/urandom | md5sum | head -c 6)"."$(head -c 16 /dev/urandom
 
 # mac os
 echo "$(head -c 6 /dev/urandom | md5 | head -c 6)"."$(head -c 16 /dev/urandom | md5 | head -c 16)"
+```
+
+```
+docker inspect rocket01-control-plane --format='{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}'
+docker inspect rocket02-control-plane --format='{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}'
 ```
 
 ### Running on the cluster

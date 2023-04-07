@@ -26,3 +26,4 @@ Dockerfile.cross
 *~
 .vscode
 .Ds_Store
+cover.out

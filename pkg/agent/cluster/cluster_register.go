@@ -59,6 +59,7 @@ var (
 
 func RegisterInit(param *agentconfig.CommandParam, mgr manager.Manager, p *agentconfig.ModuleParams) {
 	heartbeatTime = time.Duration(param.KeepAliveSecond) * time.Second
+	klog.Infof("master: '%s', bootstrap token: '%s'", param.MasterURL, param.BootstrapToken)
 	configfile, err := clustertools.GenerateKubeConfigFromToken(param.MasterURL, param.BootstrapToken, nil, 1)
 	if err != nil {
 		klog.Fatalf("generate config with error: %v", err)

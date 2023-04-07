@@ -23,6 +23,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	rocketv1alpha1 "github.com/hex-techs/rocket/api/v1alpha1"
+	"github.com/hex-techs/rocket/pkg/util/config"
 	"github.com/hex-techs/rocket/pkg/util/constant"
 	"github.com/hex-techs/rocket/pkg/util/controllerrevision"
 	"github.com/hex-techs/rocket/pkg/util/tools"
@@ -56,6 +57,7 @@ type ClusterReconciler struct {
 }
 
 func NewRecociler(mgr manager.Manager) *ClusterReconciler {
+	timeout = time.Duration(config.Pread().TimeOut) * time.Second
 	return &ClusterReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
@@ -104,6 +106,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 				return ctrl.Result{}, err
 			}
 		}
+		return ctrl.Result{}, nil
 	}
 
 	err = r.doReconcile(obj)

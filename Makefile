@@ -19,6 +19,9 @@ SHELL = /usr/bin/env bash -o pipefail
 .PHONY: all
 all: docker-build docker-push
 
+.PHONY: mac
+mac: build mac-build
+
 ##@ General
 
 # The help target prints out all targets with their descriptions organized
@@ -62,9 +65,9 @@ test: manifests generate fmt vet envtest ## Run tests.
 
 .PHONY: build
 build: manifests generate fmt vet ## Build manager binary.
-	go build -o bin/manager cmd/manager/manager.go
-	go build -o bin/agent cmd/agent/agent.go
-	go build -o bin/scheduler cmd/scheduler/scheduler.go
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/manager cmd/manager/manager.go
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/agent cmd/agent/agent.go
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/scheduler cmd/scheduler/scheduler.go
 
 # If you wish built the manager image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64 ). However, you must enable docker buildKit for it.
@@ -76,6 +79,10 @@ docker-build: test ## Build docker image with the manager.
 .PHONY: docker-push
 push-push: ## Push docker image with the manager.
 	docker push ${IMG}
+
+.PHONY: mac-build
+mac-build: test ## Build docker image with the manager.
+	docker build --no-cache -t ${IMG} -f Dockerfile-test .
 
 ##@ Deployment
 
