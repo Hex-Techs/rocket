@@ -8,6 +8,7 @@ import (
 	"github.com/hex-techs/rocket/pkg/manager/application/trait"
 	"github.com/hex-techs/rocket/pkg/util/constant"
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
+	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -60,11 +61,19 @@ func (r *workloadOption) generateWorkload(kind rocketv1alpha1.WorkloadType, app 
 	}
 	switch kind {
 	case rocketv1alpha1.Stateless:
-		cloneset, err := r.generateCloneSet(app, labels)
-		if err != nil {
-			return nil, err
+		if _, ok := app.Annotations[constant.PrimaryStatelessAnnotation]; ok {
+			deployment, err := r.generateDeployment(app, labels)
+			if err != nil {
+				return nil, err
+			}
+			workload.Spec.Template.DeploymentTemplate = deployment
+		} else {
+			cloneset, err := r.generateCloneSet(app, labels)
+			if err != nil {
+				return nil, err
+			}
+			workload.Spec.Template.CloneSetTemplate = cloneset
 		}
-		workload.Spec.Template.CloneSetTemplate = cloneset
 	case rocketv1alpha1.Stateful:
 		workload.Spec.Template.StatefulSetTemlate = r.generateStatefulSet(app)
 	case rocketv1alpha1.CronTask:
@@ -85,6 +94,24 @@ func (r *workloadOption) generateWorkload(kind rocketv1alpha1.WorkloadType, app 
 		}
 	}
 	return workload, nil
+}
+
+// generateDeployment generate deployment
+func (r *workloadOption) generateDeployment(app *rocketv1alpha1.Application, label map[string]string) (
+	*appsv1.DeploymentSpec, error) {
+	// NOTE: deployment can not use volumeclaim
+	podtemplate, _, _, err := r.generatePod(app)
+	if err != nil {
+		return nil, err
+	}
+	podtemplate.Labels = label
+	deployment := &appsv1.DeploymentSpec{
+		Selector: &metav1.LabelSelector{
+			MatchLabels: label,
+		},
+		Template: podtemplate,
+	}
+	return deployment, nil
 }
 
 func (r *workloadOption) generateCloneSet(app *rocketv1alpha1.Application, label map[string]string) (
