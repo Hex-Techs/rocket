@@ -13,3 +13,8 @@ const (
 	// trait的edge类型的名称
 	TraitEdgeAnnotation = "rocket.hextech.io/edge"
 )
+
+// PrimaryStatelessAnnotation if set this annotation to true, then set
+// Deployment as primary workload, if not set or set to false, then set
+// CloneSet as primary workload.
+const PrimaryStatelessAnnotation = "rocket.hextech.io/primary-stateless"

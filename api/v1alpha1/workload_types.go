@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
+	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -36,6 +37,8 @@ type WorkloadSpec struct {
 }
 
 type WorkloadTemplate struct {
+	// +optional
+	DeploymentTemplate *appsv1.DeploymentSpec `json:"deploymentTemplate,omitempty"`
 	// +optional
 	CloneSetTemplate *kruiseappsv1alpha1.CloneSetSpec `json:"clonesetTemplate,omitempty"`
 	// +optional
