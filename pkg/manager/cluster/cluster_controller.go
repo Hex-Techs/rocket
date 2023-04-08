@@ -101,7 +101,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 					return ctrl.Result{}, err
 				}
 			}
-			obj.Finalizers = tools.RemoveString(obj.Finalizers, constant.ApplicationFinalizer)
+			obj.Finalizers = tools.RemoveString(obj.Finalizers, constant.ClusterFinalizer)
 			if err = r.Update(ctx, obj); err != nil {
 				return ctrl.Result{}, err
 			}
