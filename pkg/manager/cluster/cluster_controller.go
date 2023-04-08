@@ -191,7 +191,9 @@ func (r *ClusterReconciler) handleControllerRevision(cluster *rocketv1alpha1.Clu
 	if !cmp.Equal(cr.Data.Raw, b) {
 		err = r.Delete(context.TODO(), cr)
 		if err != nil {
-			return err
+			if !errors.IsNotFound(err) {
+				return err
+			}
 		}
 		cr = controllerrevision.GenerateCR(cluster)
 		err = r.Create(context.TODO(), cr)
