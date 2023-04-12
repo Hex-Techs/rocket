@@ -61,18 +61,18 @@ func (r *workloadOption) generateWorkload(kind rocketv1alpha1.WorkloadType, app 
 	}
 	switch kind {
 	case rocketv1alpha1.Stateless:
-		if _, ok := app.Annotations[constant.PrimaryStatelessAnnotation]; ok {
-			deployment, err := r.generateDeployment(app, labels)
-			if err != nil {
-				return nil, err
-			}
-			workload.Spec.Template.DeploymentTemplate = deployment
-		} else {
+		if _, ok := app.Annotations[constant.ExtendedStatelessAnnotation]; ok {
 			cloneset, err := r.generateCloneSet(app, labels)
 			if err != nil {
 				return nil, err
 			}
 			workload.Spec.Template.CloneSetTemplate = cloneset
+		} else {
+			deployment, err := r.generateDeployment(app, labels)
+			if err != nil {
+				return nil, err
+			}
+			workload.Spec.Template.DeploymentTemplate = deployment
 		}
 	case rocketv1alpha1.Stateful:
 		workload.Spec.Template.StatefulSetTemlate = r.generateStatefulSet(app)

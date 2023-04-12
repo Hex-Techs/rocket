@@ -14,7 +14,7 @@ const (
 	TraitEdgeAnnotation = "rocket.hextech.io/edge"
 )
 
-// PrimaryStatelessAnnotation if set this annotation to true, then set
-// Deployment as primary workload, if not set or set to false, then set
-// CloneSet as primary workload.
-const PrimaryStatelessAnnotation = "rocket.hextech.io/primary-stateless"
+// ExtendedStatelessAnnotation if set this annotation to true, then set
+// CloneSet as primary workload, if not set or set to false, then set
+// Deplooyment as primary workload.
+const ExtendedStatelessAnnotation = "rocket.hextech.io/extended-stateless"
