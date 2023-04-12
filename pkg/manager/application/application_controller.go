@@ -95,11 +95,10 @@ func (r *ApplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	if obj.CreationTimestamp.IsZero() {
 		if !tools.ContainsString(obj.Finalizers, constant.ApplicationFinalizer) {
 			obj.Finalizers = append(obj.Finalizers, constant.ApplicationFinalizer)
+			if err = r.Update(ctx, obj); err != nil {
+				return ctrl.Result{}, err
+			}
 		}
-		if err = r.Update(ctx, obj); err != nil {
-			return ctrl.Result{}, err
-		}
-		return ctrl.Result{}, nil
 	} else {
 		if tools.ContainsString(obj.Finalizers, constant.ApplicationFinalizer) {
 			remove := false
@@ -126,16 +125,15 @@ func (r *ApplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	kind, conditions := r.validateTemplateAndParameter(obj)
 	obj.Status.Conditions = append(obj.Status.Conditions, conditions...)
 
-	createWorkloadOrNot := true
+	isHandleWorkload := true
 	for _, condition := range obj.Status.Conditions {
 		if condition.Status == metav1.ConditionFalse {
-			createWorkloadOrNot = false
+			isHandleWorkload = false
 			break
 		}
 	}
-	// generate workload
-	if createWorkloadOrNot {
-		obj.Status.Conditions = append(obj.Status.Conditions, r.createWorkload(kind, app))
+	if isHandleWorkload {
+		obj.Status.Conditions = append(obj.Status.Conditions, r.hendleWorkload(kind, app))
 	}
 
 	// update status
@@ -346,32 +344,34 @@ func (r *ApplicationReconciler) validateTemplateImage(temp *rocketv1alpha1.Templ
 	return nil
 }
 
-func (r *ApplicationReconciler) createWorkload(kind rocketv1alpha1.WorkloadType, app *rocketv1alpha1.Application) metav1.Condition {
+func (r *ApplicationReconciler) hendleWorkload(kind rocketv1alpha1.WorkloadType, app *rocketv1alpha1.Application) metav1.Condition {
+	// 1. get workload list
 	ws := &rocketv1alpha1.WorkloadList{}
 	err := r.List(context.TODO(), ws, &client.ListOptions{Namespace: app.Namespace})
 	if err != nil {
 		return condition.GenerateCondition(WorkloadReady, "WorkloadSyncedReady", err.Error(), metav1.ConditionFalse)
 	}
+	// 2. generate workload
 	workload, err := r.workloadOption.generateWorkload(kind, app)
 	if err != nil {
 		return condition.GenerateCondition(WorkloadReady, "WorkloadSyncedReady", err.Error(), metav1.ConditionFalse)
 	}
+	// 3. get workload for current app
 	workloadOwns := []rocketv1alpha1.Workload{}
 	for _, w := range ws.Items {
 		if metav1.IsControlledBy(&w, app) {
 			workloadOwns = append(workloadOwns, w)
 		}
 	}
-	var old *rocketv1alpha1.Workload
+	// 4. 删除多余的workload
+	old := new(rocketv1alpha1.Workload)
 	if len(workloadOwns) > 1 {
-		// 删除多余的workload
 		for _, w := range workloadOwns[1:] {
 			err = r.Delete(context.TODO(), &w)
 			if err != nil {
 				return condition.GenerateCondition(WorkloadReady, "WorkloadSyncedReady", err.Error(), metav1.ConditionFalse)
 			}
 		}
-		// workloadOwns = workloadOwns[1:]
 		old = &workloadOwns[0]
 	}
 	if old != nil {
@@ -388,6 +388,7 @@ func (r *ApplicationReconciler) createWorkload(kind rocketv1alpha1.WorkloadType,
 			}
 			return condition.GenerateCondition(WorkloadReady, "WorkloadSyncedReady", "workload synced", metav1.ConditionTrue)
 		} else {
+			klog.V(4).Infof("workload '%s/%s' is not changed", workload.Namespace, workload.Name)
 			return condition.GenerateCondition(WorkloadReady, "WorkloadSyncedReady", "workload synced", metav1.ConditionTrue)
 		}
 	}
@@ -397,16 +398,5 @@ func (r *ApplicationReconciler) createWorkload(kind rocketv1alpha1.WorkloadType,
 			return condition.GenerateCondition(WorkloadReady, "WorkloadSyncedReady", err.Error(), metav1.ConditionFalse)
 		}
 	}
-	// err = r.Get(context.TODO(), types.NamespacedName{Namespace: workload.Namespace, Name: workload.Name}, workload)
-	// if err != nil {
-	// 	klog.Errorf("get workload '%s' with error: %v", workload.Name, err)
-	// 	return condition.GenerateCondition(WorkloadReady, "WorkloadSyncedReady", err.Error(), metav1.ConditionFalse)
-	// }
-	// workload.Status.Phase = "Pending"
-	// err = r.Status().Update(context.TODO(), workload)
-	// if err != nil {
-	// 	klog.Errorf("update workload '%s' status with error: %v", workload.Name, err)
-	// 	return condition.GenerateCondition(WorkloadReady, "WorkloadSyncedReady", err.Error(), metav1.ConditionFalse)
-	// }
 	return condition.GenerateCondition(WorkloadReady, "WorkloadSyncedReady", "workload synced", metav1.ConditionTrue)
 }
