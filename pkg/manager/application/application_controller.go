@@ -364,12 +364,15 @@ func (r *ApplicationReconciler) hendleWorkload(kind rocketv1alpha1.WorkloadType,
 		}
 	}
 	// 4. 删除多余的workload
-	old := new(rocketv1alpha1.Workload)
-	if len(workloadOwns) > 1 {
-		for _, w := range workloadOwns[1:] {
-			err = r.Delete(context.TODO(), &w)
-			if err != nil {
-				return condition.GenerateCondition(WorkloadReady, "WorkloadSyncedReady", err.Error(), metav1.ConditionFalse)
+	var old *rocketv1alpha1.Workload
+	if len(workloadOwns) > 0 {
+		// 处理多余的 workload，可能是用户手动创建的
+		if len(workloadOwns) > 1 {
+			for _, w := range workloadOwns[1:] {
+				err = r.Delete(context.TODO(), &w)
+				if err != nil {
+					return condition.GenerateCondition(WorkloadReady, "WorkloadSyncedReady", err.Error(), metav1.ConditionFalse)
+				}
 			}
 		}
 		old = &workloadOwns[0]
@@ -384,7 +387,10 @@ func (r *ApplicationReconciler) hendleWorkload(kind rocketv1alpha1.WorkloadType,
 			workload.ResourceVersion = old.ResourceVersion
 			err = r.Update(context.TODO(), workload)
 			if err != nil {
-				return condition.GenerateCondition(WorkloadReady, "WorkloadSyncedReady", err.Error(), metav1.ConditionFalse)
+				klog.V(4).Infof("old workload is %#v", old)
+				klog.V(4).Info("generated workload is %#v", workload)
+				msg := fmt.Sprintf("update workload failed, %v", err)
+				return condition.GenerateCondition(WorkloadReady, "WorkloadSyncedReady", msg, metav1.ConditionFalse)
 			}
 			return condition.GenerateCondition(WorkloadReady, "WorkloadSyncedReady", "workload synced", metav1.ConditionTrue)
 		} else {

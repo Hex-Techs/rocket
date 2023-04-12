@@ -27,3 +27,7 @@ Dockerfile.cross
 .vscode
 .Ds_Store
 cover.out
+
+# 低性能专用
+Dockerfile-mac
+build.sh
