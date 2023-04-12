@@ -378,7 +378,8 @@ func (r *ApplicationReconciler) createWorkload(kind rocketv1alpha1.WorkloadType,
 		// Cluster 信息保持原状
 		workload.Status.Clusters = old.Status.Clusters
 		if !cmp.Equal(old.Spec, workload.Spec) ||
-			!cmp.Equal(old.Labels, workload.Labels) {
+			!cmp.Equal(old.Labels, workload.Labels) ||
+			!cmp.Equal(old.Annotations, workload.Annotations) {
 			workload.Name = old.Name
 			workload.ResourceVersion = old.ResourceVersion
 			err = r.Update(context.TODO(), workload)
