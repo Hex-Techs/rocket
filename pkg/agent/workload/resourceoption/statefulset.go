@@ -80,7 +80,7 @@ func (c *StatefulSetOption) Generate(name string, workload *rocketv1alpha1.Workl
 				constant.WorkloadNameLabel: workload.Name,
 			},
 		},
-		Spec: *workload.Spec.Template.StatefulSetTemlate,
+		Spec: *workload.Spec.Template.ExtendStatefulSetTemlate,
 	}
 	if len(statefulset.Labels) == 0 {
 		statefulset.Labels = map[string]string{}

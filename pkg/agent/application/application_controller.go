@@ -147,7 +147,6 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) error {
 	klog.Info("Started application workers")
 	<-stopCh
 	klog.Info("Shutting down application workers")
-
 	return nil
 }
 
@@ -248,10 +247,8 @@ func (c *Controller) syncHandler(key string) error {
 			if err != nil {
 				return err
 			}
-			et := condition.GenerateCondition(EdgeTraitReadyType, EdgeTraitWorkloadLoss,
-				fmt.Sprintf("workload '%s' not found", application.Name), metav1.ConditionFalse)
-			application.Status.TraitCondition = &et
-			return c.updateApplicationStatus(application)
+			// 无法判断 workload 是否属于当前集群，直接返回
+			return nil
 		}
 		if !errors.IsNotFound(err) {
 			return err
@@ -273,7 +270,6 @@ func (c *Controller) syncHandler(key string) error {
 			return nil
 		}
 	}
-
 	if !application.DeletionTimestamp.IsZero() {
 		err = c.handleDelete(application.Name, application.Spec.Traits, workload, application)
 		if err != nil {

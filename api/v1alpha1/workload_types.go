@@ -37,12 +37,18 @@ type WorkloadSpec struct {
 }
 
 type WorkloadTemplate struct {
+	// kubernetes native workload, Deployment
 	// +optional
 	DeploymentTemplate *appsv1.DeploymentSpec `json:"deploymentTemplate,omitempty"`
+	// kubernetes native workload, StatefulSet
+	// +optional
+	StatefulSetTemlate *appsv1.StatefulSetSpec `json:"statefulsetTemplate,omitempty"`
+	// openKruise workload, CloneSet
 	// +optional
 	CloneSetTemplate *kruiseappsv1alpha1.CloneSetSpec `json:"clonesetTemplate,omitempty"`
+	// openKruise workload, StatefulSet
 	// +optional
-	StatefulSetTemlate *kruiseappsv1alpha1.StatefulSetSpec `json:"statefulsetTemplate,omitempty"`
+	ExtendStatefulSetTemlate *kruiseappsv1alpha1.StatefulSetSpec `json:"extendStatefulsetTemplate,omitempty"`
 	// +optional
 	CronJobTemplate *batchv1.CronJobSpec `json:"cronjobTemplate,omitempty"`
 	// +optional

@@ -75,7 +75,7 @@ func (r *workloadOption) generateWorkload(kind rocketv1alpha1.WorkloadType, app 
 			workload.Spec.Template.DeploymentTemplate = deployment
 		}
 	case rocketv1alpha1.Stateful:
-		workload.Spec.Template.StatefulSetTemlate = r.generateStatefulSet(app)
+		workload.Spec.Template.ExtendStatefulSetTemlate = r.generateStatefulSet(app)
 	case rocketv1alpha1.CronTask:
 		cronjob, err := r.generateCronJob(app, labels)
 		if err != nil {
@@ -114,6 +114,7 @@ func (r *workloadOption) generateDeployment(app *rocketv1alpha1.Application, lab
 	return deployment, nil
 }
 
+// generateCloneSet generate cloneset
 func (r *workloadOption) generateCloneSet(app *rocketv1alpha1.Application, label map[string]string) (
 	*kruiseappsv1alpha1.CloneSetSpec, error) {
 	podtemplate, diskSize, _, err := r.generatePod(app)

@@ -3,12 +3,7 @@ package constant
 import mapset "github.com/deckarep/golang-set/v2"
 
 // 各类型资源前缀
-const (
-	CloneSetPrefix    = "rocket"
-	CronJobPrefix     = "rocket"
-	StatefulSetPrefix = "rocket"
-	JobPrefix         = "rocket"
-)
+const Prefix = "rocket"
 
 // RocketNamespace is the namespace of rocket
 const RocketNamespace = "rocket-system"

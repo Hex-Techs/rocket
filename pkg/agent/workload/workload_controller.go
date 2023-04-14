@@ -307,15 +307,17 @@ func (c *Controller) syncHandler(key string) error {
 			return c.updateWorkload(workload)
 		}
 	}
-	if workload.Spec.Template.CronJobTemplate != nil {
-		if err := c.handleCronjob(workload); err != nil {
+	// 处理deployment
+	if workload.Spec.Template.DeploymentTemplate != nil {
+		if err := c.handleDeployment(workload); err != nil {
 			if len(workload.Status.Conditions) == 0 {
 				workload.Status.Conditions = make(map[string]metav1.Condition)
 			}
-			workload.Status.Conditions[config.Pread().Name] = condition.GenerateCondition("CronJob", "CronJob", err.Error(), metav1.ConditionFalse)
+			workload.Status.Conditions[config.Pread().Name] = condition.GenerateCondition("Deployment", "Deployment", err.Error(), metav1.ConditionFalse)
 		}
-		workload.Status.Type = rocketv1alpha1.CronTask
+		workload.Status.Type = rocketv1alpha1.Stateless
 	}
+	// 处理cloneset
 	if workload.Spec.Template.CloneSetTemplate != nil {
 		if err := c.handleCloneSet(workload); err != nil {
 			if len(workload.Status.Conditions) == 0 {
@@ -324,6 +326,16 @@ func (c *Controller) syncHandler(key string) error {
 			workload.Status.Conditions[config.Pread().Name] = condition.GenerateCondition("CloneSet", "CloneSet", err.Error(), metav1.ConditionFalse)
 		}
 		workload.Status.Type = rocketv1alpha1.Stateless
+	}
+	// 处理cronjob
+	if workload.Spec.Template.CronJobTemplate != nil {
+		if err := c.handleCronjob(workload); err != nil {
+			if len(workload.Status.Conditions) == 0 {
+				workload.Status.Conditions = make(map[string]metav1.Condition)
+			}
+			workload.Status.Conditions[config.Pread().Name] = condition.GenerateCondition("CronJob", "CronJob", err.Error(), metav1.ConditionFalse)
+		}
+		workload.Status.Type = rocketv1alpha1.CronTask
 	}
 	// workload.Status.Phase = "Running"
 	// workload status 由其他的控制器更新
@@ -371,7 +383,7 @@ func (c *Controller) enqueueWorkload(obj interface{}) {
 
 func (c *Controller) delete(workload *rocketv1alpha1.Workload) error {
 	if workload.Spec.Template.CloneSetTemplate != nil {
-		name := tools.GenerateName(constant.CloneSetPrefix, workload.Name)
+		name := tools.GenerateName(constant.Prefix, workload.Name)
 		err := c.clonesetOption.Delete(name, workload.Namespace)
 		if err != nil {
 			if !errors.IsNotFound(err) {
@@ -380,7 +392,7 @@ func (c *Controller) delete(workload *rocketv1alpha1.Workload) error {
 		}
 	}
 	if workload.Spec.Template.StatefulSetTemlate != nil {
-		name := tools.GenerateName(constant.StatefulSetPrefix, workload.Name)
+		name := tools.GenerateName(constant.Prefix, workload.Name)
 		err := c.statefulsetOption.Delete(name, workload.Namespace)
 		if err != nil {
 			if !errors.IsNotFound(err) {
@@ -393,7 +405,7 @@ func (c *Controller) delete(workload *rocketv1alpha1.Workload) error {
 		}
 	}
 	if workload.Spec.Template.CronJobTemplate != nil {
-		name := tools.GenerateName(constant.CronJobPrefix, workload.Name)
+		name := tools.GenerateName(constant.Prefix, workload.Name)
 		err := c.cronjobOption.Delete(name, workload.Namespace)
 		if err != nil {
 			if !errors.IsNotFound(err) {
@@ -404,8 +416,16 @@ func (c *Controller) delete(workload *rocketv1alpha1.Workload) error {
 	return nil
 }
 
+func (c *Controller) handleDeployment(workload *rocketv1alpha1.Workload) error {
+	// name := tools.GenerateName(constant.Prefix, workload.Name)
+	// old := &appsv1.Deployment{}
+	// deployment := &appsv1.Deployment{}
+	// c.deploymentOption.Generate(name, workload, deployment)
+	return nil
+}
+
 func (c *Controller) handleCloneSet(workload *rocketv1alpha1.Workload) error {
-	name := tools.GenerateName(constant.CloneSetPrefix, workload.Name)
+	name := tools.GenerateName(constant.Prefix, workload.Name)
 	old := &kruiseappsv1alpha1.CloneSet{}
 	cloneset := &kruiseappsv1alpha1.CloneSet{}
 	c.clonesetOption.Generate(name, workload, cloneset)
@@ -438,7 +458,7 @@ func (c *Controller) handleCloneSet(workload *rocketv1alpha1.Workload) error {
 }
 
 func (c *Controller) handleCronjob(workload *rocketv1alpha1.Workload) error {
-	name := tools.GenerateName(constant.CronJobPrefix, workload.Name)
+	name := tools.GenerateName(constant.Prefix, workload.Name)
 	old := &batchv1.CronJob{}
 	cronjob := &batchv1.CronJob{}
 	c.cronjobOption.Generate(name, workload, cronjob)

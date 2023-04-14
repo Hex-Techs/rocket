@@ -63,8 +63,8 @@ func (u *updateStrategy) Handler(ttemp *rocketv1alpha1.Trait, workload *rocketv1
 		if err := u.Generate(ttemp, ssus); err != nil {
 			return nil, err
 		}
-		if w.Spec.Template.StatefulSetTemlate != nil {
-			w.Spec.Template.StatefulSetTemlate.UpdateStrategy = *ssus
+		if w.Spec.Template.ExtendStatefulSetTemlate != nil {
+			w.Spec.Template.ExtendStatefulSetTemlate.UpdateStrategy = *ssus
 		}
 	}
 	return w, nil

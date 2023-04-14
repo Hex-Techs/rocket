@@ -1006,13 +1006,18 @@ func (in *WorkloadTemplate) DeepCopyInto(out *WorkloadTemplate) {
 		*out = new(appsv1.DeploymentSpec)
 		(*in).DeepCopyInto(*out)
 	}
+	if in.StatefulSetTemlate != nil {
+		in, out := &in.StatefulSetTemlate, &out.StatefulSetTemlate
+		*out = new(appsv1.StatefulSetSpec)
+		(*in).DeepCopyInto(*out)
+	}
 	if in.CloneSetTemplate != nil {
 		in, out := &in.CloneSetTemplate, &out.CloneSetTemplate
 		*out = new(appsv1alpha1.CloneSetSpec)
 		(*in).DeepCopyInto(*out)
 	}
-	if in.StatefulSetTemlate != nil {
-		in, out := &in.StatefulSetTemlate, &out.StatefulSetTemlate
+	if in.ExtendStatefulSetTemlate != nil {
+		in, out := &in.ExtendStatefulSetTemlate, &out.ExtendStatefulSetTemlate
 		*out = new(appsv1alpha1.StatefulSetSpec)
 		(*in).DeepCopyInto(*out)
 	}

@@ -13,75 +13,30 @@ echo "$(head -c 6 /dev/urandom | md5sum | head -c 6)"."$(head -c 16 /dev/urandom
 echo "$(head -c 6 /dev/urandom | md5 | head -c 6)"."$(head -c 16 /dev/urandom | md5 | head -c 16)"
 ```
 
-```
-docker inspect rocket01-control-plane --format='{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}'
-docker inspect rocket02-control-plane --format='{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}'
+### 获取集群的 APISERVER 地址
+```sh
+export ROCKET01=$(docker inspect rocket01-control-plane --format='{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')
+export ROCKET02=$(docker inspect rocket02-control-plane --format='{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')
 ```
 
-### Running on the cluster
-1. Install Instances of Custom Resources:
+### 在集群里运行
+1. . 通过指定 `IMG` 变量来构建并推送镜像:
 
 ```sh
-kubectl apply -f config/samples/
+make all IMG=<some-registry>/rocket:tag
 ```
 
-2. Build and push your image to the location specified by `IMG`:
-
-```sh
-make docker-build docker-push IMG=<some-registry>/rocket:tag
-```
-
-3. Deploy the controller to the cluster with the image specified by `IMG`:
-
-```sh
-make deploy IMG=<some-registry>/rocket:tag
-```
-
-### Uninstall CRDs
-To delete the CRDs from the cluster:
-
-```sh
-make uninstall
-```
-
-### Undeploy controller
-UnDeploy the controller from the cluster:
-
-```sh
-make undeploy
-```
-
-### How it works
-This project aims to follow the Kubernetes [Operator pattern](https://kubernetes.io/docs/concepts/extend-kubernetes/operator/).
-
-It uses [Controllers](https://kubernetes.io/docs/concepts/architecture/controller/),
-which provide a reconcile function responsible for synchronizing resources until the desired state is reached on the cluster.
-
-### Test It Out
-1. Install the CRDs into the cluster:
+2. 安装 `CRD` 到集群:
 
 ```sh
 make install
 ```
 
-2. Run your controller (this will run in the foreground, so switch to a new terminal if you want to leave it running):
+3. 卸载 `CRD`
 
 ```sh
-make run
+make uninstall
 ```
-
-**NOTE:** You can also run this in one step by running: `make install run`
-
-### Modifying the API definitions
-If you are editing the API definitions, generate the manifests such as CRs or CRDs using:
-
-```sh
-make manifests
-```
-
-**NOTE:** Run `make --help` for more information on all potential `make` targets
-
-More information can be found via the [Kubebuilder Documentation](https://book.kubebuilder.io/introduction.html)
 
 ## License
 
