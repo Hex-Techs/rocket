@@ -45,14 +45,23 @@ func (t *tolerate) Handler(ttemp *rocketv1alpha1.Trait, workload *rocketv1alpha1
 	if err := t.Generate(ttemp, &tole); err != nil {
 		return nil, err
 	}
+	if w.Spec.Template.DeploymentTemplate != nil {
+		w.Spec.Template.DeploymentTemplate.Template.Spec.Tolerations = tole
+	}
 	if w.Spec.Template.CloneSetTemplate != nil {
 		w.Spec.Template.CloneSetTemplate.Template.Spec.Tolerations = tole
 	}
 	if w.Spec.Template.CronJobTemplate != nil {
 		w.Spec.Template.CronJobTemplate.JobTemplate.Spec.Template.Spec.Tolerations = tole
 	}
+	if w.Spec.Template.JobTemplate != nil {
+		w.Spec.Template.JobTemplate.Spec.Template.Spec.Tolerations = tole
+	}
 	if w.Spec.Template.StatefulSetTemlate != nil {
 		w.Spec.Template.StatefulSetTemlate.Template.Spec.Tolerations = tole
+	}
+	if w.Spec.Template.ExtendStatefulSetTemlate != nil {
+		w.Spec.Template.ExtendStatefulSetTemlate.Template.Spec.Tolerations = tole
 	}
 	return w, nil
 }

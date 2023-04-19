@@ -31,7 +31,7 @@ func (*manualScale) Generate(ttemp *rocketv1alpha1.Trait, obj interface{}) error
 		}
 	}
 	mid := reflect.ValueOf(obj).Elem()
-	mid.Set(reflect.ValueOf(*ms.Replicas))
+	mid.Set(reflect.ValueOf(*ms))
 	return nil
 }
 
@@ -40,15 +40,24 @@ func (m *manualScale) Handler(ttemp *rocketv1alpha1.Trait, workload *rocketv1alp
 		return nil, nil
 	}
 	w := workload
-	replicas := int32(0)
-	if err := m.Generate(ttemp, &replicas); err != nil {
+	ms := &ManualScale{}
+	if err := m.Generate(ttemp, ms); err != nil {
 		return nil, err
 	}
+	if w.Spec.Template.DeploymentTemplate != nil {
+		w.Spec.Template.DeploymentTemplate.Replicas = ms.Replicas
+	}
 	if w.Spec.Template.CloneSetTemplate != nil {
-		w.Spec.Template.CloneSetTemplate.Replicas = &replicas
+		w.Spec.Template.CloneSetTemplate.Replicas = ms.Replicas
+		if ms.ScaleStrategy != nil {
+			w.Spec.Template.CloneSetTemplate.ScaleStrategy.PodsToDelete = ms.ScaleStrategy.PodsToDelete
+		}
 	}
 	if w.Spec.Template.StatefulSetTemlate != nil {
-		w.Spec.Template.StatefulSetTemlate.Replicas = &replicas
+		w.Spec.Template.StatefulSetTemlate.Replicas = ms.Replicas
+	}
+	if w.Spec.Template.ExtendStatefulSetTemlate != nil {
+		w.Spec.Template.ExtendStatefulSetTemlate.Replicas = ms.Replicas
 	}
 	return w, nil
 }

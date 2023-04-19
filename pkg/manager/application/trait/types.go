@@ -2,24 +2,30 @@ package trait
 
 import v1 "k8s.io/api/core/v1"
 
-// 手动伸缩 trait 的配置格式
+// ManualScale 手动伸缩 trait 的配置格式
 type ManualScale struct {
-	Replicas *int32 `json:"replicas,omitempty"`
+	Replicas      *int32         `json:"replicas,omitempty"`
+	ScaleStrategy *ScaleStrategy `json:"scaleStrategy,omitempty"`
 }
 
-// 亲和性配置
+// ScaleStrategy 调度策略中删除指定pod，只在cloneset中生效
+type ScaleStrategy struct {
+	PodsToDelete []string `json:"podsToDelete,omitempty"`
+}
+
+// Affinity 亲和性配置
 type Affinity struct {
 	NodeAffinity    *v1.NodeAffinity    `json:"nodeAffinity,omitempty"`
 	PodAffinity     *v1.PodAffinity     `json:"podAffinity,omitempty"`
 	PodAntiAffinity *v1.PodAntiAffinity `json:"podAntiAffinity,omitempty"`
 }
 
-// 容忍配置
+// Tolerate 容忍配置
 type Tolerate struct {
 	Tolerations []v1.Toleration `json:"tolerations,omitempty"`
 }
 
-// 资源删除保护配置
+// DeletionProtection 资源删除保护配置
 type DeletionProtection struct {
 	// 对应的标签 policy.kruise.io/delete-protection
 	// Always：这个对象禁止被删除，除非上述 label 被去掉
@@ -27,7 +33,7 @@ type DeletionProtection struct {
 	Type string `json:"type,omitempty"`
 }
 
-// metrics metrics 收集
+// Metrics metrics 收集
 type Metrics struct {
 	// prometheus.io/scrape: "false"
 	Enable bool `json:"enable,omitempty"`

@@ -44,6 +44,19 @@ func (a *probe) Handler(ttemp *rocketv1alpha1.Trait, workload *rocketv1alpha1.Wo
 	if err := a.Generate(ttemp, probe); err != nil {
 		return nil, err
 	}
+	if w.Spec.Template.DeploymentTemplate != nil {
+		for i := range w.Spec.Template.DeploymentTemplate.Template.Spec.Containers {
+			if probe.LivenessProbe != nil {
+				w.Spec.Template.DeploymentTemplate.Template.Spec.Containers[i].LivenessProbe = probe.LivenessProbe
+			}
+			if probe.ReadinessProbe != nil {
+				w.Spec.Template.DeploymentTemplate.Template.Spec.Containers[i].ReadinessProbe = probe.ReadinessProbe
+			}
+			if probe.StartupProbe != nil {
+				w.Spec.Template.DeploymentTemplate.Template.Spec.Containers[i].StartupProbe = probe.StartupProbe
+			}
+		}
+	}
 	if w.Spec.Template.CloneSetTemplate != nil {
 		for i := range w.Spec.Template.CloneSetTemplate.Template.Spec.Containers {
 			if probe.LivenessProbe != nil {
@@ -58,7 +71,7 @@ func (a *probe) Handler(ttemp *rocketv1alpha1.Trait, workload *rocketv1alpha1.Wo
 		}
 	}
 	if w.Spec.Template.StatefulSetTemlate != nil {
-		for i := range w.Spec.Template.CloneSetTemplate.Template.Spec.Containers {
+		for i := range w.Spec.Template.StatefulSetTemlate.Template.Spec.Containers {
 			if probe.LivenessProbe != nil {
 				w.Spec.Template.StatefulSetTemlate.Template.Spec.Containers[i].LivenessProbe = probe.LivenessProbe
 			}
@@ -70,5 +83,19 @@ func (a *probe) Handler(ttemp *rocketv1alpha1.Trait, workload *rocketv1alpha1.Wo
 			}
 		}
 	}
+	if w.Spec.Template.ExtendStatefulSetTemlate != nil {
+		for i := range w.Spec.Template.ExtendStatefulSetTemlate.Template.Spec.Containers {
+			if probe.LivenessProbe != nil {
+				w.Spec.Template.ExtendStatefulSetTemlate.Template.Spec.Containers[i].LivenessProbe = probe.LivenessProbe
+			}
+			if probe.ReadinessProbe != nil {
+				w.Spec.Template.ExtendStatefulSetTemlate.Template.Spec.Containers[i].ReadinessProbe = probe.ReadinessProbe
+			}
+			if probe.StartupProbe != nil {
+				w.Spec.Template.ExtendStatefulSetTemlate.Template.Spec.Containers[i].StartupProbe = probe.StartupProbe
+			}
+		}
+	}
+
 	return w, nil
 }

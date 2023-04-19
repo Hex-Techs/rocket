@@ -56,6 +56,14 @@ func (m *metrics) Handler(ttemp *rocketv1alpha1.Trait, workload *rocketv1alpha1.
 		// 端口默认 8090，如果不在范围内就设置为默认端口
 		ms.Port = 8090
 	}
+	if w.Spec.Template.DeploymentTemplate != nil {
+		if len(w.Spec.Template.DeploymentTemplate.Template.Annotations) == 0 {
+			w.Spec.Template.DeploymentTemplate.Template.Annotations = map[string]string{}
+		}
+		w.Spec.Template.DeploymentTemplate.Template.Annotations[EnableAnnotationKey] = fmt.Sprintf("%t", ms.Enable)
+		w.Spec.Template.DeploymentTemplate.Template.Annotations[PathAnnotationKey] = ms.Path
+		w.Spec.Template.DeploymentTemplate.Template.Annotations[PortAnnotationKey] = fmt.Sprintf("%d", ms.Port)
+	}
 	if w.Spec.Template.CloneSetTemplate != nil {
 		if len(w.Spec.Template.CloneSetTemplate.Template.Annotations) == 0 {
 			w.Spec.Template.CloneSetTemplate.Template.Annotations = map[string]string{}
@@ -65,20 +73,20 @@ func (m *metrics) Handler(ttemp *rocketv1alpha1.Trait, workload *rocketv1alpha1.
 		w.Spec.Template.CloneSetTemplate.Template.Annotations[PortAnnotationKey] = fmt.Sprintf("%d", ms.Port)
 	}
 	if w.Spec.Template.StatefulSetTemlate != nil {
-		if len(w.Spec.Template.CloneSetTemplate.Template.Annotations) == 0 {
+		if len(w.Spec.Template.StatefulSetTemlate.Template.Annotations) == 0 {
 			w.Spec.Template.StatefulSetTemlate.Template.Annotations = map[string]string{}
 		}
 		w.Spec.Template.StatefulSetTemlate.Template.Annotations[EnableAnnotationKey] = fmt.Sprintf("%t", ms.Enable)
 		w.Spec.Template.StatefulSetTemlate.Template.Annotations[PathAnnotationKey] = ms.Path
 		w.Spec.Template.StatefulSetTemlate.Template.Annotations[PortAnnotationKey] = fmt.Sprintf("%d", ms.Port)
 	}
-	if w.Spec.Template.CronJobTemplate != nil {
-		if len(w.Spec.Template.CloneSetTemplate.Template.Annotations) == 0 {
-			w.Spec.Template.CronJobTemplate.JobTemplate.Annotations = map[string]string{}
+	if w.Spec.Template.ExtendStatefulSetTemlate != nil {
+		if len(w.Spec.Template.ExtendStatefulSetTemlate.Template.Annotations) == 0 {
+			w.Spec.Template.ExtendStatefulSetTemlate.Template.Annotations = map[string]string{}
 		}
-		w.Spec.Template.CronJobTemplate.JobTemplate.Annotations[EnableAnnotationKey] = fmt.Sprintf("%t", ms.Enable)
-		w.Spec.Template.CronJobTemplate.JobTemplate.Annotations[PathAnnotationKey] = ms.Path
-		w.Spec.Template.CronJobTemplate.JobTemplate.Annotations[PortAnnotationKey] = fmt.Sprintf("%d", ms.Port)
+		w.Spec.Template.ExtendStatefulSetTemlate.Template.Annotations[EnableAnnotationKey] = fmt.Sprintf("%t", ms.Enable)
+		w.Spec.Template.ExtendStatefulSetTemlate.Template.Annotations[PathAnnotationKey] = ms.Path
+		w.Spec.Template.ExtendStatefulSetTemlate.Template.Annotations[PortAnnotationKey] = fmt.Sprintf("%d", ms.Port)
 	}
 
 	return w, nil

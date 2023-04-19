@@ -50,6 +50,9 @@ func (a *affinity) Handler(ttemp *rocketv1alpha1.Trait, workload *rocketv1alpha1
 	if err := a.Generate(ttemp, affi); err != nil {
 		return nil, err
 	}
+	if w.Spec.Template.DeploymentTemplate != nil {
+		w.Spec.Template.DeploymentTemplate.Template.Spec.Affinity = affi
+	}
 	if w.Spec.Template.CloneSetTemplate != nil {
 		w.Spec.Template.CloneSetTemplate.Template.Spec.Affinity = affi
 	}
@@ -58,6 +61,9 @@ func (a *affinity) Handler(ttemp *rocketv1alpha1.Trait, workload *rocketv1alpha1
 	}
 	if w.Spec.Template.StatefulSetTemlate != nil {
 		w.Spec.Template.StatefulSetTemlate.Template.Spec.Affinity = affi
+	}
+	if w.Spec.Template.JobTemplate != nil {
+		w.Spec.Template.JobTemplate.Spec.Template.Spec.Affinity = affi
 	}
 	return w, nil
 }

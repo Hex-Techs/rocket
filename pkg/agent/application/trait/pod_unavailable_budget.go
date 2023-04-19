@@ -78,11 +78,7 @@ func (p *pub) Handler(ttemp *rocketv1alpha1.Trait, workload *rocketv1alpha1.Work
 		return err
 	}
 	pub.Spec = *spec
-	pub.Spec.TargetReference = &kruisepolicyv1alpha1.TargetReference{
-		APIVersion: "apps.kruise.io/v1alpha1",
-		Kind:       "CloneSet",
-		Name:       name,
-	}
+	pub.Spec.TargetReference = generateTarget(workload)
 	old, err := client.kclient.PolicyV1alpha1().PodUnavailableBudgets(namespace).Get(context.TODO(), name, metav1.GetOptions{})
 	if err != nil {
 		if !errors.IsNotFound(err) {
@@ -109,4 +105,27 @@ func (p *pub) Handler(ttemp *rocketv1alpha1.Trait, workload *rocketv1alpha1.Work
 		}
 	}
 	return nil
+}
+
+func generateTarget(workload *rocketv1alpha1.Workload) *kruisepolicyv1alpha1.TargetReference {
+	target := &kruisepolicyv1alpha1.TargetReference{
+		Name: fmt.Sprintf("%s-%s", constant.Prefix, workload.Name),
+	}
+	if workload.Spec.Template.DeploymentTemplate != nil {
+		target.APIVersion = "apps/v1"
+		target.Kind = "Deployment"
+	}
+	if workload.Spec.Template.CloneSetTemplate != nil {
+		target.APIVersion = "apps.kruise.io/v1alpha1"
+		target.Kind = "CloneSet"
+	}
+	if workload.Spec.Template.StatefulSetTemlate != nil {
+		target.APIVersion = "apps/v1"
+		target.Kind = "StatefulSet"
+	}
+	if workload.Spec.Template.ExtendStatefulSetTemlate != nil {
+		target.APIVersion = "apps.kruise.io/v1beta1"
+		target.Kind = "StatefulSet"
+	}
+	return target
 }
