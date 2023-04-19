@@ -966,6 +966,11 @@ func (in *WorkloadStatus) DeepCopyInto(out *WorkloadStatus) {
 			(*out)[key] = *val.DeepCopy()
 		}
 	}
+	if in.DeploymentStatus != nil {
+		in, out := &in.DeploymentStatus, &out.DeploymentStatus
+		*out = new(appsv1.DeploymentStatus)
+		(*in).DeepCopyInto(*out)
+	}
 	if in.ClonSetStatus != nil {
 		in, out := &in.ClonSetStatus, &out.ClonSetStatus
 		*out = new(appsv1alpha1.CloneSetStatus)
@@ -973,6 +978,11 @@ func (in *WorkloadStatus) DeepCopyInto(out *WorkloadStatus) {
 	}
 	if in.StatefulSetStatus != nil {
 		in, out := &in.StatefulSetStatus, &out.StatefulSetStatus
+		*out = new(appsv1.StatefulSetStatus)
+		(*in).DeepCopyInto(*out)
+	}
+	if in.ExtendStatefulSetStatus != nil {
+		in, out := &in.ExtendStatefulSetStatus, &out.ExtendStatefulSetStatus
 		*out = new(appsv1alpha1.StatefulSetStatus)
 		(*in).DeepCopyInto(*out)
 	}

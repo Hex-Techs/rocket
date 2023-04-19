@@ -37,8 +37,8 @@ import (
 	"github.com/hex-techs/rocket/pkg/util/tools"
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	kclientset "github.com/openkruise/kruise-api/client/clientset/versioned"
+	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
-	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -80,10 +80,12 @@ func NewController(
 		kruiseclientset:   kruiseclientset,
 		workloadsLister:   workloadInformer.Lister(),
 		workloadsSynced:   workloadInformer.Informer().HasSynced,
+		deploymentOption:  resourceoption.NewDeploymentOption(kubeclientset),
 		cronjobOption:     resourceoption.NewCronJobOption(kubeclientset),
 		clonesetOption:    resourceoption.NewCloneSetOption(kruiseclientset),
 		statefulsetOption: resourceoption.NewStatefulSetOption(kruiseclientset),
-		workqueue:         workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Workloads"),
+		// extStatefulsetOption: resourceoption.NewExtStatefulSetOption(kruiseclientset),
+		workqueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Workloads"),
 	}
 
 	klog.Info("Setting up event handlers")
@@ -112,9 +114,12 @@ type Controller struct {
 	workloadsLister listers.WorkloadLister
 	workloadsSynced cache.InformerSynced
 
-	cronjobOption     resourceoption.ResourceOption
-	clonesetOption    resourceoption.ResourceOption
-	statefulsetOption resourceoption.ResourceOption
+	deploymentOption     resourceoption.ResourceOption
+	clonesetOption       resourceoption.ResourceOption
+	statefulsetOption    resourceoption.ResourceOption
+	extStatefulsetOption resourceoption.ResourceOption
+	cronjobOption        resourceoption.ResourceOption
+	jobOption            resourceoption.ResourceOption
 
 	// workqueue is a rate limited work queue. This is used to queue work to be
 	// processed instead of performing it as soon as a change happens. This
@@ -417,10 +422,31 @@ func (c *Controller) delete(workload *rocketv1alpha1.Workload) error {
 }
 
 func (c *Controller) handleDeployment(workload *rocketv1alpha1.Workload) error {
-	// name := tools.GenerateName(constant.Prefix, workload.Name)
-	// old := &appsv1.Deployment{}
-	// deployment := &appsv1.Deployment{}
-	// c.deploymentOption.Generate(name, workload, deployment)
+	name := tools.GenerateName(constant.Prefix, workload.Name)
+	old := &appsv1.Deployment{}
+	deployment := &appsv1.Deployment{}
+	c.deploymentOption.Generate(name, workload, deployment)
+	if err := c.deploymentOption.Get(name, workload.Namespace, old); err != nil {
+		if !errors.IsNotFound(err) {
+			return err
+		} else {
+			if err := c.deploymentOption.Create(name, deployment.Namespace, *deployment); err != nil {
+				return err
+			}
+		}
+	} else {
+		if !cmp.Equal(old.Spec, deployment.Spec) {
+			deployment.ResourceVersion = old.ResourceVersion
+			if err := c.deploymentOption.Update(name, deployment.Namespace, *deployment); err != nil {
+				return err
+			}
+		}
+	}
+	exist := &appsv1.Deployment{}
+	if err := c.deploymentOption.Get(name, workload.Namespace, exist); err != nil {
+		return err
+	}
+	workload.Status.DeploymentStatus = &exist.Status
 	return nil
 }
 
@@ -448,12 +474,12 @@ func (c *Controller) handleCloneSet(workload *rocketv1alpha1.Workload) error {
 			}
 		}
 	}
-	exit := &kruiseappsv1alpha1.CloneSet{}
-	err = c.clonesetOption.Get(name, cloneset.Namespace, exit)
+	exist := &kruiseappsv1alpha1.CloneSet{}
+	err = c.clonesetOption.Get(name, cloneset.Namespace, exist)
 	if err != nil {
 		return err
 	}
-	workload.Status.ClonSetStatus = &exit.Status
+	workload.Status.ClonSetStatus = &exist.Status
 	return nil
 }
 
@@ -487,26 +513,5 @@ func (c *Controller) handleCronjob(workload *rocketv1alpha1.Workload) error {
 		return err
 	}
 	workload.Status.CronjobStatus = &exit.Status
-	workload.Status.Phase = "Running"
 	return nil
-}
-
-// pod template 的兼容处理
-func (c *Controller) compatiblePT(pt *v1.PodTemplateSpec) *v1.PodTemplateSpec {
-	var container v1.Container
-	length := len(pt.Spec.Containers)
-	if length == 0 {
-		return pt
-	}
-	container = pt.Spec.Containers[length-1]
-	container.Resources.Limits = v1.ResourceList{
-		v1.ResourceCPU:    *container.Resources.Limits.Cpu(),
-		v1.ResourceMemory: *container.Resources.Limits.Memory(),
-	}
-	container.Resources.Requests = v1.ResourceList{
-		v1.ResourceCPU:    *container.Resources.Requests.Cpu(),
-		v1.ResourceMemory: *container.Resources.Requests.Memory(),
-	}
-	pt.Spec.Containers[length-1] = container
-	return pt
 }

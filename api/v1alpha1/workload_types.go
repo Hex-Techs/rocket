@@ -29,7 +29,7 @@ type WorkloadSpec struct {
 	// +optional
 	Regions []string `json:"regions,omitempty"`
 	// +optional
-	Template WorkloadTemplate `json:"tempate,omitempty"`
+	Template WorkloadTemplate `json:"template,omitempty"`
 	// The workload this Toleration is attached to tolerates any taint that matches
 	// the triple <key,value,effect> using the matching operator <operator>.
 	// +optional
@@ -67,9 +67,13 @@ type WorkloadStatus struct {
 	// +optional
 	Conditions map[string]metav1.Condition `json:"conditions,omitempty"`
 	// +optional
+	DeploymentStatus *appsv1.DeploymentStatus `json:"deploymentStatus,omitempty"`
+	// +optional
 	ClonSetStatus *kruiseappsv1alpha1.CloneSetStatus `json:"clonesetStatus,omitempty"`
 	// +optional
-	StatefulSetStatus *kruiseappsv1alpha1.StatefulSetStatus `json:"statefulsetStatus,omitempty"`
+	StatefulSetStatus *appsv1.StatefulSetStatus `json:"statefulsetStatus,omitempty"`
+	// +optional
+	ExtendStatefulSetStatus *kruiseappsv1alpha1.StatefulSetStatus `json:"extendStatefulsetStatus,omitempty"`
 	// +optional
 	CronjobStatus *batchv1.CronJobStatus `json:"cronjobStatus,omitempty"`
 	// +optional

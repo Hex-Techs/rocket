@@ -20,7 +20,6 @@ func NewCronJobOption(client kubernetes.Interface) ResourceOption {
 
 var _ ResourceOption = &CronJobOption{}
 
-// NOTE: k8s 坑人，cronjob 是 v1beta1，job 确是 v1，不知道什么时候会改。current: version 1.20
 type CronJobOption struct {
 	kubeclientset kubernetes.Interface
 }
