@@ -7,6 +7,7 @@ import (
 
 	rocketv1alpha1 "github.com/hex-techs/rocket/api/v1alpha1"
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
+	kruiseappsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
 	"k8s.io/apimachinery/pkg/util/yaml"
 )
 
@@ -59,7 +60,7 @@ func (u *updateStrategy) Handler(ttemp *rocketv1alpha1.Trait, workload *rocketv1
 		}
 	}
 	if ttemp.Version == StatefulSetUpdateStrategyVersion {
-		ssus := &kruiseappsv1alpha1.StatefulSetUpdateStrategy{}
+		ssus := &kruiseappsv1beta1.StatefulSetUpdateStrategy{}
 		if err := u.Generate(ttemp, ssus); err != nil {
 			return nil, err
 		}

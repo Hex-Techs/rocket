@@ -23,6 +23,7 @@ package v1alpha1
 
 import (
 	appsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
+	"github.com/openkruise/kruise-api/apps/v1beta1"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	"k8s.io/api/core/v1"
@@ -1028,7 +1029,7 @@ func (in *WorkloadTemplate) DeepCopyInto(out *WorkloadTemplate) {
 	}
 	if in.ExtendStatefulSetTemlate != nil {
 		in, out := &in.ExtendStatefulSetTemlate, &out.ExtendStatefulSetTemlate
-		*out = new(appsv1alpha1.StatefulSetSpec)
+		*out = new(v1beta1.StatefulSetSpec)
 		(*in).DeepCopyInto(*out)
 	}
 	if in.CronJobTemplate != nil {

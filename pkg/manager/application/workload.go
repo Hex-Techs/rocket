@@ -8,6 +8,7 @@ import (
 	"github.com/hex-techs/rocket/pkg/manager/application/trait"
 	"github.com/hex-techs/rocket/pkg/util/constant"
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
+	kruiseappsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	v1 "k8s.io/api/core/v1"
@@ -152,8 +153,8 @@ func (r *workloadOption) generateCloneSet(app *rocketv1alpha1.Application, label
 	return cloneset, nil
 }
 
-func (r *workloadOption) generateStatefulSet(app *rocketv1alpha1.Application) *kruiseappsv1alpha1.StatefulSetSpec {
-	return &kruiseappsv1alpha1.StatefulSetSpec{}
+func (r *workloadOption) generateStatefulSet(app *rocketv1alpha1.Application) *kruiseappsv1beta1.StatefulSetSpec {
+	return &kruiseappsv1beta1.StatefulSetSpec{}
 }
 
 func (r *workloadOption) generateCronJob(app *rocketv1alpha1.Application, label map[string]string) (

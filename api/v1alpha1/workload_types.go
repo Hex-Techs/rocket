@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
+	kruiseappsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	v1 "k8s.io/api/core/v1"
@@ -48,7 +49,7 @@ type WorkloadTemplate struct {
 	CloneSetTemplate *kruiseappsv1alpha1.CloneSetSpec `json:"clonesetTemplate,omitempty"`
 	// openKruise workload, StatefulSet
 	// +optional
-	ExtendStatefulSetTemlate *kruiseappsv1alpha1.StatefulSetSpec `json:"extendStatefulsetTemplate,omitempty"`
+	ExtendStatefulSetTemlate *kruiseappsv1beta1.StatefulSetSpec `json:"extendStatefulsetTemplate,omitempty"`
 	// +optional
 	CronJobTemplate *batchv1.CronJobSpec `json:"cronjobTemplate,omitempty"`
 	// +optional

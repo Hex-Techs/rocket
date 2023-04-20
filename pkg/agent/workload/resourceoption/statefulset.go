@@ -8,6 +8,7 @@ import (
 	rocketv1alpha1 "github.com/hex-techs/rocket/api/v1alpha1"
 	"github.com/hex-techs/rocket/pkg/util/constant"
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
+	kruiseappsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
 	kclientset "github.com/openkruise/kruise-api/client/clientset/versioned"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -71,7 +72,7 @@ func (c *StatefulSetOption) Update(name, namespace string, obj interface{}) erro
 }
 
 func (c *StatefulSetOption) Generate(name string, workload *rocketv1alpha1.Workload, obj interface{}) error {
-	statefulset := &kruiseappsv1alpha1.StatefulSet{
+	statefulset := &kruiseappsv1beta1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: workload.Namespace,

@@ -2,6 +2,7 @@ package trait
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 
@@ -23,6 +24,9 @@ var _ Trait = &affinity{}
 type affinity struct{}
 
 func (*affinity) Generate(ttemp *rocketv1alpha1.Trait, obj interface{}) error {
+	if obj == nil {
+		return errors.New("obj is nil")
+	}
 	affi := new(Affinity)
 	err := yaml.Unmarshal([]byte(ttemp.Template), affi)
 	if err != nil || affi == nil {
@@ -43,7 +47,7 @@ func (*affinity) Generate(ttemp *rocketv1alpha1.Trait, obj interface{}) error {
 
 func (a *affinity) Handler(ttemp *rocketv1alpha1.Trait, workload *rocketv1alpha1.Workload) (*rocketv1alpha1.Workload, error) {
 	if workload == nil {
-		return nil, nil
+		return nil, errors.New("workload is nil")
 	}
 	w := workload
 	affi := &v1.Affinity{}
@@ -61,6 +65,9 @@ func (a *affinity) Handler(ttemp *rocketv1alpha1.Trait, workload *rocketv1alpha1
 	}
 	if w.Spec.Template.StatefulSetTemlate != nil {
 		w.Spec.Template.StatefulSetTemlate.Template.Spec.Affinity = affi
+	}
+	if w.Spec.Template.ExtendStatefulSetTemlate != nil {
+		w.Spec.Template.ExtendStatefulSetTemlate.Template.Spec.Affinity = affi
 	}
 	if w.Spec.Template.JobTemplate != nil {
 		w.Spec.Template.JobTemplate.Spec.Template.Spec.Affinity = affi

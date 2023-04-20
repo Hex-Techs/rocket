@@ -2,6 +2,7 @@ package trait
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 
@@ -22,9 +23,12 @@ var _ Trait = &manualScale{}
 type manualScale struct{}
 
 func (*manualScale) Generate(ttemp *rocketv1alpha1.Trait, obj interface{}) error {
+	if obj == nil {
+		return errors.New("obj is nil")
+	}
 	ms := new(ManualScale)
 	err := yaml.Unmarshal([]byte(ttemp.Template), ms)
-	if err != nil || ms == nil {
+	if err != nil {
 		errj := json.Unmarshal([]byte(ttemp.Template), ms)
 		if errj != nil {
 			return fmt.Errorf("synax error: %v, %v", err, errj)

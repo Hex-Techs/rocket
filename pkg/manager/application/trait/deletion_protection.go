@@ -2,6 +2,7 @@ package trait
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 
@@ -27,6 +28,9 @@ var _ Trait = &deletionProtection{}
 type deletionProtection struct{}
 
 func (*deletionProtection) Generate(ttemp *rocketv1alpha1.Trait, obj interface{}) error {
+	if obj == nil {
+		return errors.New("obj is nil")
+	}
 	dp := new(DeletionProtection)
 	err := yaml.Unmarshal([]byte(ttemp.Template), dp)
 	if err != nil || dp == nil {
@@ -51,8 +55,13 @@ func (*deletionProtection) Generate(ttemp *rocketv1alpha1.Trait, obj interface{}
 }
 
 func (d *deletionProtection) Handler(ttemp *rocketv1alpha1.Trait, workload *rocketv1alpha1.Workload) (*rocketv1alpha1.Workload, error) {
+	if workload == nil {
+		return nil, errors.New("workload is nil")
+	}
 	m := workload.Labels
-	d.Generate(ttemp, &m)
+	if err := d.Generate(ttemp, &m); err != nil {
+		return nil, err
+	}
 	workload.Labels = m
 	return workload, nil
 }
