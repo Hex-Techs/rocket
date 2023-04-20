@@ -180,15 +180,15 @@ type ResourceQuantity struct {
 // only work for cronTask and task
 type JobOptions struct {
 	// schedule is the cron schedule
-	// +required
-	// +kubebuilder:validation:Required
-	Schedule string `json:"schedule,omitempty"`
+	// If not specified, then it is a task.
+	// +optional
+	Schedule *string `json:"schedule,omitempty"`
 	// suspend is the cron suspend
 	// +optional
 	Suspend bool `json:"suspend,omitempty"`
 	// concurrencyPolicy is the cron concurrencyPolicy
 	// +kubebuilder:validation:Enum=Allow;Forbid;Replace
-	ConcurrencyPolicy string `json:"concurrencyPolicy,omitempty"`
+	ConcurrencyPolicy *string `json:"concurrencyPolicy,omitempty"`
 	// successfulJobsHistoryLimit is the cron successfulJobsHistoryLimit
 	// +kubebuilder:default=3
 	SuccessfulJobsHistoryLimit int32 `json:"successfulJobsHistoryLimit,omitempty"`

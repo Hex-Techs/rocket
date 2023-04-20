@@ -886,7 +886,8 @@ spec:
                     description: Restart policy
                     type: string
                   schedule:
-                    description: schedule is the cron schedule
+                    description: schedule is the cron schedule If not specified, then
+                      it is a task.
                     type: string
                   startingDeadlineSeconds:
                     default: 30

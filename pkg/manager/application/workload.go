@@ -175,11 +175,11 @@ func (r *workloadOption) generateCronJob(app *rocketv1alpha1.Application, label 
 	}
 	podtemplate.Spec.RestartPolicy = v1.RestartPolicy(temp.Spec.JobOptions.RestartPolicy)
 	return &batchv1.CronJobSpec{
-		Schedule:                   temp.Spec.JobOptions.Schedule,
+		Schedule:                   *temp.Spec.JobOptions.Schedule,
 		Suspend:                    pointer.BoolPtr(temp.Spec.JobOptions.Suspend),
 		SuccessfulJobsHistoryLimit: pointer.Int32Ptr(temp.Spec.JobOptions.SuccessfulJobsHistoryLimit),
 		FailedJobsHistoryLimit:     pointer.Int32Ptr(temp.Spec.JobOptions.FailedJobsHistoryLimit),
-		ConcurrencyPolicy:          batchv1.ConcurrencyPolicy(temp.Spec.JobOptions.ConcurrencyPolicy),
+		ConcurrencyPolicy:          batchv1.ConcurrencyPolicy(*temp.Spec.JobOptions.ConcurrencyPolicy),
 		StartingDeadlineSeconds:    pointer.Int64Ptr(temp.Spec.JobOptions.StartingDeadlineSeconds),
 		JobTemplate: batchv1.JobTemplateSpec{
 			ObjectMeta: metav1.ObjectMeta{
