@@ -19,31 +19,33 @@ package workload
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
 	mapset "github.com/deckarep/golang-set/v2"
-	"github.com/google/go-cmp/cmp"
 	rocketv1alpha1 "github.com/hex-techs/rocket/api/v1alpha1"
 	clientset "github.com/hex-techs/rocket/client/clientset/versioned"
 	workloadscheme "github.com/hex-techs/rocket/client/clientset/versioned/scheme"
 	informers "github.com/hex-techs/rocket/client/informers/externalversions/rocket/v1alpha1"
 	listers "github.com/hex-techs/rocket/client/listers/rocket/v1alpha1"
-	"github.com/hex-techs/rocket/pkg/agent/workload/resourceoption"
 	"github.com/hex-techs/rocket/pkg/util/condition"
 	"github.com/hex-techs/rocket/pkg/util/config"
 	"github.com/hex-techs/rocket/pkg/util/constant"
+	"github.com/hex-techs/rocket/pkg/util/gvktools"
 	"github.com/hex-techs/rocket/pkg/util/tools"
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
-	kclientset "github.com/openkruise/kruise-api/client/clientset/versioned"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
@@ -64,8 +66,7 @@ const (
 
 // NewController returns a new workload controller
 func NewController(
-	kubeclientset kubernetes.Interface,
-	kruiseclientset kclientset.Interface,
+	kubeclientset dynamic.Interface,
 	rocketclientset clientset.Interface,
 	workloadInformer informers.WorkloadInformer) *Controller {
 
@@ -75,15 +76,10 @@ func NewController(
 	utilruntime.Must(workloadscheme.AddToScheme(scheme.Scheme))
 
 	controller := &Controller{
-		kubeclientset:     kubeclientset,
-		rocketclientset:   rocketclientset,
-		kruiseclientset:   kruiseclientset,
-		workloadsLister:   workloadInformer.Lister(),
-		workloadsSynced:   workloadInformer.Informer().HasSynced,
-		deploymentOption:  resourceoption.NewDeploymentOption(kubeclientset),
-		cronjobOption:     resourceoption.NewCronJobOption(kubeclientset),
-		clonesetOption:    resourceoption.NewCloneSetOption(kruiseclientset),
-		statefulsetOption: resourceoption.NewStatefulSetOption(kruiseclientset),
+		kubeclientset:   kubeclientset,
+		rocketclientset: rocketclientset,
+		workloadsLister: workloadInformer.Lister(),
+		workloadsSynced: workloadInformer.Informer().HasSynced,
 		// extStatefulsetOption: resourceoption.NewExtStatefulSetOption(kruiseclientset),
 		workqueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Workloads"),
 	}
@@ -104,22 +100,13 @@ func NewController(
 // Controller is the controller implementation for Workload resources
 type Controller struct {
 	// 当前集群的 clientset 用来创建 cronjob 等工作负载
-	kubeclientset kubernetes.Interface
+	kubeclientset dynamic.Interface
 	// 管理集群的 clientset，当发现管理端的 workload 资源变化时，触发本集群的修改
 	rocketclientset clientset.Interface
-	// 当前集群 open kruise 的 clientset
-	kruiseclientset kclientset.Interface
 
 	// manager 集群的 workload 资源
 	workloadsLister listers.WorkloadLister
 	workloadsSynced cache.InformerSynced
-
-	deploymentOption     resourceoption.ResourceOption
-	clonesetOption       resourceoption.ResourceOption
-	statefulsetOption    resourceoption.ResourceOption
-	extStatefulsetOption resourceoption.ResourceOption
-	cronjobOption        resourceoption.ResourceOption
-	jobOption            resourceoption.ResourceOption
 
 	// workqueue is a rate limited work queue. This is used to queue work to be
 	// processed instead of performing it as soon as a change happens. This
@@ -277,6 +264,14 @@ func (c *Controller) syncHandler(key string) error {
 	if !set.Contains(config.Pread().Name) && !oldClusterSet.Contains(config.Pread().Name) {
 		return nil
 	}
+	resource, gvk, err := gvktools.GetResourceAndGvkFromWorkload(workload)
+	if err != nil {
+		return err
+	}
+	if resource == nil {
+		return fmt.Errorf("resource template is nil")
+	}
+	gvr := gvktools.SetGVRForWorkload(gvk)
 	if !set.Contains(config.Pread().Name) && oldClusterSet.Contains(config.Pread().Name) {
 		// 原集群是本集群，新集群不是，处理删除工作负载的逻辑，要保证先创建，后删除
 		for _, v := range currentClusters {
@@ -288,7 +283,7 @@ func (c *Controller) syncHandler(key string) error {
 				return fmt.Errorf("workload '%s/%s' has not been created in cluster '%s'. The workload corresponding to this cluster cannot be deleted until the creation is successful", namespace, name, v)
 			}
 		}
-		err = c.delete(workload)
+		err = c.delete(workload, gvr)
 		if err != nil {
 			return err
 		}
@@ -303,38 +298,41 @@ func (c *Controller) syncHandler(key string) error {
 		}
 	} else {
 		if tools.ContainsString(workload.Finalizers, constant.WorkloadFinalizer) {
-			// 删除相关工作负载
-			err = c.delete(workload)
-			if err != nil {
+			if err := c.delete(workload, gvr); err != nil {
 				return err
 			}
 			workload.Finalizers = tools.RemoveString(workload.Finalizers, constant.WorkloadFinalizer)
 			return c.updateWorkload(workload)
 		}
 	}
-	// 处理deployment
-	if workload.Spec.Template.DeploymentTemplate != nil {
-		if err := c.handleDeployment(workload); err != nil {
+	// Convert the resource to JSON bytes
+	b, _ := json.Marshal(resource)
+	switch gvr.Resource {
+	case "deployments":
+		// 处理deployment
+		deployment := &appsv1.Deployment{}
+		json.Unmarshal(b, deployment)
+		if err := c.handleDeployment(workload, deployment, gvr); err != nil {
 			if len(workload.Status.Conditions) == 0 {
 				workload.Status.Conditions = make(map[string]metav1.Condition)
 			}
 			workload.Status.Conditions[config.Pread().Name] = condition.GenerateCondition("Deployment", "Deployment", err.Error(), metav1.ConditionFalse)
 		}
 		workload.Status.Type = rocketv1alpha1.Stateless
-	}
-	// 处理cloneset
-	if workload.Spec.Template.CloneSetTemplate != nil {
-		if err := c.handleCloneSet(workload); err != nil {
+	case "clonesets":
+		cloneset := &kruiseappsv1alpha1.CloneSet{}
+		json.Unmarshal(b, cloneset)
+		if err := c.handleCloneSet(workload, cloneset, gvr); err != nil {
 			if len(workload.Status.Conditions) == 0 {
 				workload.Status.Conditions = make(map[string]metav1.Condition)
 			}
 			workload.Status.Conditions[config.Pread().Name] = condition.GenerateCondition("CloneSet", "CloneSet", err.Error(), metav1.ConditionFalse)
 		}
 		workload.Status.Type = rocketv1alpha1.Stateless
-	}
-	// 处理cronjob
-	if workload.Spec.Template.CronJobTemplate != nil {
-		if err := c.handleCronjob(workload); err != nil {
+	case "cronjobs":
+		cronjob := &batchv1.CronJob{}
+		json.Unmarshal(b, cronjob)
+		if err := c.handleCronjob(workload, cronjob, gvr); err != nil {
 			if len(workload.Status.Conditions) == 0 {
 				workload.Status.Conditions = make(map[string]metav1.Condition)
 			}
@@ -386,132 +384,145 @@ func (c *Controller) enqueueWorkload(obj interface{}) {
 	c.workqueue.Add(key)
 }
 
-func (c *Controller) delete(workload *rocketv1alpha1.Workload) error {
-	if workload.Spec.Template.CloneSetTemplate != nil {
-		name := tools.GenerateName(constant.Prefix, workload.Name)
-		err := c.clonesetOption.Delete(name, workload.Namespace)
-		if err != nil {
-			if !errors.IsNotFound(err) {
-				return err
-			}
-		}
-	}
-	if workload.Spec.Template.StatefulSetTemlate != nil {
-		name := tools.GenerateName(constant.Prefix, workload.Name)
-		err := c.statefulsetOption.Delete(name, workload.Namespace)
-		if err != nil {
-			if !errors.IsNotFound(err) {
-				return err
-			}
-		}
-		// err = c.handleStsHeadlessSvc(workload, StsDeleteEvent)
-		if err != nil {
-			klog.V(4).Infof("failed to handle headless service of statefulset %v, err is %s", workload.Name, err)
-		}
-	}
-	if workload.Spec.Template.CronJobTemplate != nil {
-		name := tools.GenerateName(constant.Prefix, workload.Name)
-		err := c.cronjobOption.Delete(name, workload.Namespace)
-		if err != nil {
-			if !errors.IsNotFound(err) {
-				return err
-			}
-		}
-	}
-	return nil
+func (c *Controller) delete(workload *rocketv1alpha1.Workload, gvr schema.GroupVersionResource) error {
+	name := tools.GenerateName(constant.Prefix, workload.Name)
+	return c.kubeclientset.Resource(gvr).Namespace(workload.Namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
 }
 
-func (c *Controller) handleDeployment(workload *rocketv1alpha1.Workload) error {
+func (c *Controller) handleDeployment(workload *rocketv1alpha1.Workload, deploy *appsv1.Deployment,
+	gvr schema.GroupVersionResource) error {
 	name := tools.GenerateName(constant.Prefix, workload.Name)
-	old := &appsv1.Deployment{}
-	deployment := &appsv1.Deployment{}
-	c.deploymentOption.Generate(name, workload, deployment)
-	if err := c.deploymentOption.Get(name, workload.Namespace, old); err != nil {
-		if !errors.IsNotFound(err) {
-			return err
-		} else {
-			if err := c.deploymentOption.Create(name, deployment.Namespace, *deployment); err != nil {
-				return err
-			}
-		}
-	} else {
-		if !cmp.Equal(old.Spec, deployment.Spec) {
-			deployment.ResourceVersion = old.ResourceVersion
-			if err := c.deploymentOption.Update(name, deployment.Namespace, *deployment); err != nil {
-				return err
-			}
-		}
+	deployment := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: workload.Namespace,
+			Labels:    workload.Labels,
+			Annotations: map[string]string{
+				constant.WorkloadNameLabel: workload.Name,
+				constant.GenerateNameLabel: name,
+				constant.AppNameLabel:      name,
+			},
+		},
+		Spec: deploy.Spec,
 	}
-	exist := &appsv1.Deployment{}
-	if err := c.deploymentOption.Get(name, workload.Namespace, exist); err != nil {
-		return err
-	}
-	workload.Status.DeploymentStatus = &exist.Status
-	return nil
-}
-
-func (c *Controller) handleCloneSet(workload *rocketv1alpha1.Workload) error {
-	name := tools.GenerateName(constant.Prefix, workload.Name)
-	old := &kruiseappsv1alpha1.CloneSet{}
-	cloneset := &kruiseappsv1alpha1.CloneSet{}
-	c.clonesetOption.Generate(name, workload, cloneset)
-	err := c.clonesetOption.Get(name, workload.Namespace, old)
+	resource := gvktools.ConvertToUnstructured(deployment)
+	old, err := c.kubeclientset.Resource(gvr).Namespace(workload.Namespace).Get(context.TODO(), name, metav1.GetOptions{})
 	if err != nil {
 		if !errors.IsNotFound(err) {
 			return err
 		} else {
-			err = c.clonesetOption.Create(name, cloneset.Namespace, *cloneset)
-			if err != nil {
-				return err
-			}
+			_, err := c.kubeclientset.Resource(gvr).Namespace(workload.Namespace).Create(context.TODO(), resource, metav1.CreateOptions{})
+			return err
 		}
 	} else {
-		if !cmp.Equal(old.Spec, cloneset.Spec) {
-			cloneset.ResourceVersion = old.ResourceVersion
-			err = c.clonesetOption.Update(name, cloneset.Namespace, *cloneset)
-			if err != nil {
-				return err
-			}
+		if gvktools.NeedToUpdate(old, resource) {
+			// NOTE: 更新时不在使用resourceVersion
+			// rv, _, _ := unstructured.NestedFieldCopy(resource.Object, "metadata", "resourceVersion")
+			// if err := unstructured.SetNestedField(resource.Object, rv, "metadata", "resourceVersion"); err != nil {
+			// 	panic(fmt.Errorf("failed to set replica value: %v", err))
+			// }
+			_, err := c.kubeclientset.Resource(gvr).Namespace(workload.Namespace).Update(context.TODO(), resource, metav1.UpdateOptions{})
+			return err
 		}
 	}
-	exist := &kruiseappsv1alpha1.CloneSet{}
-	err = c.clonesetOption.Get(name, cloneset.Namespace, exist)
+	exist, err := c.kubeclientset.Resource(gvr).Namespace(workload.Namespace).Get(context.TODO(), name, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
-	workload.Status.ClonSetStatus = &exist.Status
+	status, _, _ := unstructured.NestedFieldCopy(exist.Object, "status")
+	workload.Status.WorkloadDetails = &runtime.RawExtension{}
+	workload.Status.WorkloadDetails.Raw, _ = json.Marshal(status)
 	return nil
 }
 
-func (c *Controller) handleCronjob(workload *rocketv1alpha1.Workload) error {
+func (c *Controller) handleCloneSet(workload *rocketv1alpha1.Workload, clone *kruiseappsv1alpha1.CloneSet,
+	gvr schema.GroupVersionResource) error {
 	name := tools.GenerateName(constant.Prefix, workload.Name)
-	old := &batchv1.CronJob{}
-	cronjob := &batchv1.CronJob{}
-	c.cronjobOption.Generate(name, workload, cronjob)
-	err := c.cronjobOption.Get(name, workload.Namespace, old)
+	cloneset := &kruiseappsv1alpha1.CloneSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: workload.Namespace,
+			Labels:    workload.Labels,
+			Annotations: map[string]string{
+				constant.WorkloadNameLabel: workload.Name,
+				constant.GenerateNameLabel: name,
+				constant.AppNameLabel:      name,
+			},
+		},
+		Spec: clone.Spec,
+	}
+	resource := gvktools.ConvertToUnstructured(cloneset)
+	old, err := c.kubeclientset.Resource(gvr).Namespace(workload.Namespace).Get(context.TODO(), name, metav1.GetOptions{})
 	if err != nil {
 		if !errors.IsNotFound(err) {
 			return err
 		} else {
-			err = c.cronjobOption.Create(name, cronjob.Namespace, *cronjob)
-			if err != nil {
-				return err
-			}
+			_, err := c.kubeclientset.Resource(gvr).Namespace(workload.Namespace).Create(context.TODO(), resource, metav1.CreateOptions{})
+			return err
 		}
 	} else {
-		if !cmp.Equal(old.Spec, cronjob.Spec) {
-			cronjob.ResourceVersion = old.ResourceVersion
-			err = c.cronjobOption.Update(name, cronjob.Namespace, *cronjob)
-			if err != nil {
-				return err
-			}
+		if gvktools.NeedToUpdate(old, resource) {
+			// NOTE: 更新时不在使用resourceVersion
+			// rv, _, _ := unstructured.NestedFieldCopy(resource.Object, "metadata", "resourceVersion")
+			// if err := unstructured.SetNestedField(resource.Object, rv, "metadata", "resourceVersion"); err != nil {
+			// 	panic(fmt.Errorf("failed to set replica value: %v", err))
+			// }
+			_, err := c.kubeclientset.Resource(gvr).Namespace(workload.Namespace).Update(context.TODO(), resource, metav1.UpdateOptions{})
+			return err
 		}
 	}
-	exit := &batchv1.CronJob{}
-	err = c.cronjobOption.Get(name, cronjob.Namespace, exit)
+	exist, err := c.kubeclientset.Resource(gvr).Namespace(workload.Namespace).Get(context.TODO(), name, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
-	workload.Status.CronjobStatus = &exit.Status
+	status, _, _ := unstructured.NestedFieldCopy(exist.Object, "status")
+	workload.Status.WorkloadDetails = &runtime.RawExtension{}
+	workload.Status.WorkloadDetails.Raw, _ = json.Marshal(status)
+	return nil
+}
+
+func (c *Controller) handleCronjob(workload *rocketv1alpha1.Workload, cj *batchv1.CronJob,
+	gvr schema.GroupVersionResource) error {
+	name := tools.GenerateName(constant.Prefix, workload.Name)
+	cronjob := &batchv1.CronJob{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: workload.Namespace,
+			Labels:    workload.Labels,
+			Annotations: map[string]string{
+				constant.WorkloadNameLabel: workload.Name,
+				constant.GenerateNameLabel: name,
+				constant.AppNameLabel:      name,
+			},
+		},
+		Spec: cj.Spec,
+	}
+	resource := gvktools.ConvertToUnstructured(cronjob)
+	old, err := c.kubeclientset.Resource(gvr).Namespace(workload.Namespace).Get(context.TODO(), name, metav1.GetOptions{})
+	if err != nil {
+		if !errors.IsNotFound(err) {
+			return err
+		} else {
+			_, err := c.kubeclientset.Resource(gvr).Namespace(workload.Namespace).Create(context.TODO(), resource, metav1.CreateOptions{})
+			return err
+		}
+	} else {
+		if gvktools.NeedToUpdate(old, resource) {
+			// NOTE: 更新时不在使用resourceVersion
+			// rv, _, _ := unstructured.NestedFieldCopy(resource.Object, "metadata", "resourceVersion")
+			// if err := unstructured.SetNestedField(resource.Object, rv, "metadata", "resourceVersion"); err != nil {
+			// 	panic(fmt.Errorf("failed to set replica value: %v", err))
+			// }
+			_, err := c.kubeclientset.Resource(gvr).Namespace(workload.Namespace).Update(context.TODO(), resource, metav1.UpdateOptions{})
+			return err
+		}
+	}
+	exist, err := c.kubeclientset.Resource(gvr).Namespace(workload.Namespace).Get(context.TODO(), name, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	status, _, _ := unstructured.NestedFieldCopy(exist.Object, "status")
+	workload.Status.WorkloadDetails = &runtime.RawExtension{}
+	workload.Status.WorkloadDetails.Raw, _ = json.Marshal(status)
 	return nil
 }

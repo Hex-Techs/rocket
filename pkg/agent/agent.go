@@ -2,7 +2,6 @@ package agent
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	rocketv1alpha1 "github.com/hex-techs/rocket/api/v1alpha1"
@@ -12,6 +11,7 @@ import (
 	"github.com/hex-techs/rocket/pkg/agent/cloneset"
 	"github.com/hex-techs/rocket/pkg/agent/cluster"
 	"github.com/hex-techs/rocket/pkg/agent/cronjob"
+	"github.com/hex-techs/rocket/pkg/agent/deployment"
 	"github.com/hex-techs/rocket/pkg/agent/distribution"
 	"github.com/hex-techs/rocket/pkg/agent/workload"
 	"github.com/hex-techs/rocket/pkg/util/clustertools"
@@ -31,9 +31,12 @@ const ErrTemplateSchemeNotSupported = "scheme %s is not supported yet"
 
 type ReconcilerSetupFunc func(manager manager.Manager) error
 
-var SupportedSchemeReconciler = map[string]ReconcilerSetupFunc{
+var supportedSchemeReconciler = map[string]ReconcilerSetupFunc{
 	cluster.ClusterKind: func(mgr manager.Manager) error {
 		return cluster.NewReconciler(mgr).SetupWithManager(mgr)
+	},
+	deployment.DeploymentKind: func(mgr manager.Manager) error {
+		return deployment.NewDeploymentReconciler(mgr).SetupWithManager(mgr)
 	},
 	cloneset.CloneSetKind: func(mgr manager.Manager) error {
 		return cloneset.NewCloneSetReconciler(mgr).SetupWithManager(mgr)
@@ -43,31 +46,18 @@ var SupportedSchemeReconciler = map[string]ReconcilerSetupFunc{
 	},
 }
 
-type EnabledSchemes []string
-
-func (es *EnabledSchemes) String() string {
-	return strings.Join(*es, ",")
-}
-
-func (es *EnabledSchemes) Set(kind string) error {
-	kind = strings.ToLower(kind)
-	for supportedKind := range SupportedSchemeReconciler {
-		if strings.ToLower(supportedKind) == kind {
-			*es = append(*es, supportedKind)
-			return nil
+func InitReconcilers(mgr manager.Manager, enables []string) error {
+	klog.V(4).Infof("enable controllers: %v", enables)
+	for _, enable := range enables {
+		if m, support := supportedSchemeReconciler[enable]; support {
+			if err := m(mgr); err != nil {
+				return err
+			}
+		} else {
+			return fmt.Errorf(ErrTemplateSchemeNotSupported, enable)
 		}
 	}
-	return fmt.Errorf(ErrTemplateSchemeNotSupported, kind)
-}
-
-func (es *EnabledSchemes) FillAll() {
-	for supportedKind := range SupportedSchemeReconciler {
-		*es = append(*es, supportedKind)
-	}
-}
-
-func (es *EnabledSchemes) Empty() bool {
-	return len(*es) == 0
+	return nil
 }
 
 func RemoteController(mgr manager.Manager) error {
@@ -120,7 +110,7 @@ func RemoteController(mgr manager.Manager) error {
 	rocketInformerFactory := informers.NewSharedInformerFactory(rocketclientset, time.Second*60)
 	kruiseInformerFactory := kinformers.NewSharedInformerFactory(kruiseClient, time.Second*60)
 
-	workloadcontroller := workload.NewController(kubeClient, kruiseClient, rocketclientset,
+	workloadcontroller := workload.NewController(dynamicClient, rocketclientset,
 		rocketInformerFactory.Rocket().V1alpha1().Workloads())
 
 	appcontroller := application.NewController(kubeClient, kruiseClient, rocketclientset,

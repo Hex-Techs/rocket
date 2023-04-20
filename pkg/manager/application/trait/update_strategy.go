@@ -2,10 +2,12 @@ package trait
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 
 	rocketv1alpha1 "github.com/hex-techs/rocket/api/v1alpha1"
+	"github.com/hex-techs/rocket/pkg/util/gvktools"
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	kruiseappsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
 	"k8s.io/apimachinery/pkg/util/yaml"
@@ -50,13 +52,30 @@ func (u *updateStrategy) Handler(ttemp *rocketv1alpha1.Trait, workload *rocketv1
 		return nil, nil
 	}
 	w := workload
+	resource, gvk, err := gvktools.GetResourceAndGvkFromWorkload(w)
+	if err != nil {
+		return nil, err
+	}
+	if resource == nil {
+		return nil, errors.New("resource template is nil")
+	}
+	gvr := gvktools.SetGVRForWorkload(gvk)
+	if err := gvktools.ValidateResource(gvr); err != nil {
+		return nil, err
+	}
+	// Convert the resource to JSON bytes
+	b, _ := json.Marshal(resource)
+	var raw []byte
 	if ttemp.Version == CloneSetUpdateStrategyVersion {
 		csus := &kruiseappsv1alpha1.CloneSetUpdateStrategy{}
 		if err := u.Generate(ttemp, csus); err != nil {
 			return nil, err
 		}
-		if w.Spec.Template.CloneSetTemplate != nil {
-			w.Spec.Template.CloneSetTemplate.UpdateStrategy = *csus
+		if gvr.Resource == "clonesets" {
+			clone := &kruiseappsv1alpha1.CloneSet{}
+			json.Unmarshal(b, clone)
+			clone.Spec.UpdateStrategy = *csus
+			raw, _ = json.Marshal(clone)
 		}
 	}
 	if ttemp.Version == StatefulSetUpdateStrategyVersion {
@@ -64,10 +83,15 @@ func (u *updateStrategy) Handler(ttemp *rocketv1alpha1.Trait, workload *rocketv1
 		if err := u.Generate(ttemp, ssus); err != nil {
 			return nil, err
 		}
-		if w.Spec.Template.ExtendStatefulSetTemlate != nil {
-			w.Spec.Template.ExtendStatefulSetTemlate.UpdateStrategy = *ssus
+		if gvr.Resource == "statefulsets" && gvr.Group == "apps.kruise.io" {
+			sts := &kruiseappsv1beta1.StatefulSet{}
+			json.Unmarshal(b, sts)
+			sts.Spec.UpdateStrategy = *ssus
+			raw, _ = json.Marshal(sts)
 		}
 	}
+	// Set the template on the Workload
+	w.Spec.Template.Raw = raw
 	return w, nil
 }
 

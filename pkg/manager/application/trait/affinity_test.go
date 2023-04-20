@@ -10,15 +10,17 @@ import (
 	v1 "k8s.io/api/core/v1"
 )
 
-var nodeAffinity = v1.NodeAffinity{
-	RequiredDuringSchedulingIgnoredDuringExecution: &v1.NodeSelector{
-		NodeSelectorTerms: []v1.NodeSelectorTerm{
-			{
-				MatchExpressions: []v1.NodeSelectorRequirement{
-					{
-						Key:      "kubernetes.io/hostname",
-						Operator: v1.NodeSelectorOpIn,
-						Values:   []string{"node1", "node2"},
+var affinityTemp = Affinity{
+	NodeAffinity: &v1.NodeAffinity{
+		RequiredDuringSchedulingIgnoredDuringExecution: &v1.NodeSelector{
+			NodeSelectorTerms: []v1.NodeSelectorTerm{
+				{
+					MatchExpressions: []v1.NodeSelectorRequirement{
+						{
+							Key:      "kubernetes.io/hostname",
+							Operator: v1.NodeSelectorOpIn,
+							Values:   []string{"node1", "node2"},
+						},
 					},
 				},
 			},
@@ -26,45 +28,67 @@ var nodeAffinity = v1.NodeAffinity{
 	},
 }
 
-var nodeAffiByte, _ = json.Marshal(nodeAffinity)
-
-var nodeAffiJson = string(nodeAffiByte)
+var affiByte, _ = json.Marshal(affinityTemp)
 
 var traitTemp = rocketv1alpha1.Trait{
 	Kind:     AffinityKind,
-	Template: nodeAffiJson,
+	Template: string(affiByte),
 }
 
 func Test_affinity_Handler(t *testing.T) {
 	affinityworkloadwithdeploy := constant.Testworkload
-	affinityworkloadwithdeploy.Spec.Template.DeploymentTemplate = &constant.DeployTemp
-	wantaffinityworkloadwithdeploy := affinityworkloadwithdeploy
-	wantaffinityworkloadwithdeploy.Spec.Template.DeploymentTemplate.Template.Spec.Affinity.NodeAffinity = &nodeAffinity
+	tmpdeploy := constant.DeployTemp
+	b, _ := json.Marshal(tmpdeploy)
+	affinityworkloadwithdeploy.Spec.Template.Raw = b
+	wantaffinityworkloadwithdeploy := constant.Testworkload
+	tmpdeploy.Spec.Template.Spec.Affinity.NodeAffinity = affinityTemp.NodeAffinity
+	b, _ = json.Marshal(tmpdeploy)
+	wantaffinityworkloadwithdeploy.Spec.Template.Raw = b
 
 	affinityworkloadwithclone := constant.Testworkload
-	affinityworkloadwithclone.Spec.Template.CloneSetTemplate = &constant.CloneTemp
-	wantaffinityworkloadwithclone := affinityworkloadwithclone
-	wantaffinityworkloadwithclone.Spec.Template.CloneSetTemplate.Template.Spec.Affinity.NodeAffinity = &nodeAffinity
+	tmpclone := constant.CloneTemp
+	b, _ = json.Marshal(tmpclone)
+	affinityworkloadwithclone.Spec.Template.Raw = b
+	wantaffinityworkloadwithclone := constant.Testworkload
+	tmpclone.Spec.Template.Spec.Affinity.NodeAffinity = affinityTemp.NodeAffinity
+	b, _ = json.Marshal(tmpclone)
+	wantaffinityworkloadwithclone.Spec.Template.Raw = b
 
 	affinityworkloadwithsts := constant.Testworkload
-	affinityworkloadwithsts.Spec.Template.StatefulSetTemlate = &constant.StsTemp
-	wantaffinityworkloadwithsts := affinityworkloadwithsts
-	wantaffinityworkloadwithsts.Spec.Template.StatefulSetTemlate.Template.Spec.Affinity.NodeAffinity = &nodeAffinity
+	tmpsts := constant.StsTemp
+	b, _ = json.Marshal(tmpsts)
+	affinityworkloadwithsts.Spec.Template.Raw = b
+	wantaffinityworkloadwithsts := constant.Testworkload
+	tmpdeploy.Spec.Template.Spec.Affinity.NodeAffinity = affinityTemp.NodeAffinity
+	b, _ = json.Marshal(tmpsts)
+	wantaffinityworkloadwithsts.Spec.Template.Raw = b
 
 	affinityworkloadwithests := constant.Testworkload
-	affinityworkloadwithests.Spec.Template.ExtendStatefulSetTemlate = &constant.EstsTemp
-	wantaffinityworkloadwithests := affinityworkloadwithests
-	wantaffinityworkloadwithests.Spec.Template.ExtendStatefulSetTemlate.Template.Spec.Affinity.NodeAffinity = &nodeAffinity
+	tmpests := constant.EstsTemp
+	b, _ = json.Marshal(tmpests)
+	affinityworkloadwithests.Spec.Template.Raw = b
+	wantaffinityworkloadwithests := constant.Testworkload
+	tmpdeploy.Spec.Template.Spec.Affinity.NodeAffinity = affinityTemp.NodeAffinity
+	b, _ = json.Marshal(tmpests)
+	wantaffinityworkloadwithests.Spec.Template.Raw = b
 
-	affinityworkloadwithcronjob := constant.Testworkload
-	affinityworkloadwithcronjob.Spec.Template.CronJobTemplate = &constant.CronjobTemp
-	wantaffinityworkloadwithcronjob := affinityworkloadwithcronjob
-	wantaffinityworkloadwithcronjob.Spec.Template.CronJobTemplate.JobTemplate.Spec.Template.Spec.Affinity.NodeAffinity = &nodeAffinity
+	affinityworkloadwithcj := constant.Testworkload
+	tmpcj := constant.CronjobTemp
+	b, _ = json.Marshal(tmpcj)
+	affinityworkloadwithcj.Spec.Template.Raw = b
+	wantaffinityworkloadwithcj := constant.Testworkload
+	tmpcj.Spec.JobTemplate.Spec.Template.Spec.Affinity.NodeAffinity = affinityTemp.NodeAffinity
+	b, _ = json.Marshal(tmpcj)
+	wantaffinityworkloadwithcj.Spec.Template.Raw = b
 
-	affinityworkloadwithjob := constant.Testworkload
-	affinityworkloadwithjob.Spec.Template.JobTemplate = &constant.JobTemp
-	wantaffinityworkloadwithjob := affinityworkloadwithjob
-	wantaffinityworkloadwithjob.Spec.Template.JobTemplate.Spec.Template.Spec.Affinity.NodeAffinity = &nodeAffinity
+	affinityworkloadwithj := constant.Testworkload
+	tmpj := constant.JobTemp
+	b, _ = json.Marshal(tmpj)
+	affinityworkloadwithj.Spec.Template.Raw = b
+	wantaffinityworkloadwithj := constant.Testworkload
+	tmpj.Spec.Template.Spec.Affinity.NodeAffinity = affinityTemp.NodeAffinity
+	b, _ = json.Marshal(tmpj)
+	wantaffinityworkloadwithj.Spec.Template.Raw = b
 
 	type args struct {
 		ttemp    *rocketv1alpha1.Trait
@@ -82,8 +106,8 @@ func Test_affinity_Handler(t *testing.T) {
 		{"testclone", args{&traitTemp, &affinityworkloadwithclone}, &wantaffinityworkloadwithclone, false},
 		{"teststs", args{&traitTemp, &affinityworkloadwithsts}, &wantaffinityworkloadwithsts, false},
 		{"testests", args{&traitTemp, &affinityworkloadwithests}, &wantaffinityworkloadwithests, false},
-		{"testcj", args{&traitTemp, &affinityworkloadwithcronjob}, &wantaffinityworkloadwithcronjob, false},
-		{"testj", args{&traitTemp, &affinityworkloadwithjob}, &wantaffinityworkloadwithjob, false},
+		{"testcj", args{&traitTemp, &affinityworkloadwithcj}, &wantaffinityworkloadwithcj, false},
+		{"testj", args{&traitTemp, &affinityworkloadwithj}, &wantaffinityworkloadwithj, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -93,8 +117,12 @@ func Test_affinity_Handler(t *testing.T) {
 				t.Errorf("affinity.Handler() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("affinity.Handler() = %v, want %v", got, tt.want)
+			if tt.want != nil {
+				g := string(got.Spec.Template.Raw)
+				tw := string(tt.want.Spec.Template.Raw)
+				if !reflect.DeepEqual(g, tw) {
+					t.Errorf("affinity.Handler() = %v\nwant %v", g, tw)
+				}
 			}
 		})
 	}

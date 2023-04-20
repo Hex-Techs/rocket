@@ -14,7 +14,9 @@ const (
 	TraitEdgeAnnotation = "rocket.hextech.io/edge"
 )
 
-// ExtendedStatelessAnnotation if set this annotation to true, then set
+// ExtendedResourceAnnotation if set this annotation to true, then set
 // CloneSet as primary workload, if not set or set to false, then set
 // Deplooyment as primary workload.
-const ExtendedStatelessAnnotation = "rocket.hextech.io/extended-stateless"
+const (
+	ExtendedResourceAnnotation = "rocket.hextech.io/extended-resource"
+)

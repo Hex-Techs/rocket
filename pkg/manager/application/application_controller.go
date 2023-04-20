@@ -383,12 +383,11 @@ func (r *ApplicationReconciler) hendleWorkload(kind rocketv1alpha1.WorkloadType,
 		if !cmp.Equal(old.Spec, workload.Spec) ||
 			!cmp.Equal(old.Labels, workload.Labels) ||
 			!cmp.Equal(old.Annotations, workload.Annotations) {
-			workload.Name = old.Name
-			workload.ResourceVersion = old.ResourceVersion
-			err = r.Update(context.TODO(), workload)
+			old.Spec = workload.Spec
+			old.Labels = workload.Labels
+			old.Annotations = workload.Annotations
+			err = r.Update(context.TODO(), old)
 			if err != nil {
-				klog.V(4).Infof("old workload is %#v", old)
-				klog.V(4).Info("generated workload is %#v", workload)
 				msg := fmt.Sprintf("update workload failed, %v", err)
 				return condition.GenerateCondition(WorkloadReady, "WorkloadSyncedReady", msg, metav1.ConditionFalse)
 			}

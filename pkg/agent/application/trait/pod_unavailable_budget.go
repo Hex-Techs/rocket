@@ -9,10 +9,12 @@ import (
 	"github.com/google/go-cmp/cmp"
 	rocketv1alpha1 "github.com/hex-techs/rocket/api/v1alpha1"
 	"github.com/hex-techs/rocket/pkg/util/constant"
+	"github.com/hex-techs/rocket/pkg/util/gvktools"
 	kruisepolicyv1alpha1 "github.com/openkruise/kruise-api/policy/v1alpha1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/yaml"
+	"k8s.io/klog/v2"
 )
 
 const (
@@ -60,10 +62,6 @@ func (p *pub) Handler(ttemp *rocketv1alpha1.Trait, workload *rocketv1alpha1.Work
 		}
 		return nil
 	}
-	if workload.Spec.Template.CloneSetTemplate == nil {
-		return fmt.Errorf("(%s) only used for cloneset, but not found cloneset in workload '%s'",
-			PodUnavailableBudgetKind, workload.Name)
-	}
 	pub := &kruisepolicyv1alpha1.PodUnavailableBudget{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -79,6 +77,9 @@ func (p *pub) Handler(ttemp *rocketv1alpha1.Trait, workload *rocketv1alpha1.Work
 	}
 	pub.Spec = *spec
 	pub.Spec.TargetReference = generateTarget(workload)
+	if pub.Spec.TargetReference == nil {
+		return fmt.Errorf("generate target reference failed")
+	}
 	old, err := client.kclient.PolicyV1alpha1().PodUnavailableBudgets(namespace).Get(context.TODO(), name, metav1.GetOptions{})
 	if err != nil {
 		if !errors.IsNotFound(err) {
@@ -111,21 +112,27 @@ func generateTarget(workload *rocketv1alpha1.Workload) *kruisepolicyv1alpha1.Tar
 	target := &kruisepolicyv1alpha1.TargetReference{
 		Name: fmt.Sprintf("%s-%s", constant.Prefix, workload.Name),
 	}
-	if workload.Spec.Template.DeploymentTemplate != nil {
+	_, gvk, err := gvktools.GetResourceAndGvkFromWorkload(workload)
+	if err != nil {
+		klog.Errorf("get resource and gvk from workload failed: %v", err)
+		return nil
+	}
+	gvr := gvktools.SetGVRForWorkload(gvk)
+	switch gvr.Resource {
+	case "deployments":
 		target.APIVersion = "apps/v1"
 		target.Kind = "Deployment"
-	}
-	if workload.Spec.Template.CloneSetTemplate != nil {
+	case "clonesets":
 		target.APIVersion = "apps.kruise.io/v1alpha1"
 		target.Kind = "CloneSet"
-	}
-	if workload.Spec.Template.StatefulSetTemlate != nil {
-		target.APIVersion = "apps/v1"
-		target.Kind = "StatefulSet"
-	}
-	if workload.Spec.Template.ExtendStatefulSetTemlate != nil {
-		target.APIVersion = "apps.kruise.io/v1beta1"
-		target.Kind = "StatefulSet"
+	case "statefulsets":
+		if gvr.Group == "apps" {
+			target.APIVersion = "apps/v1"
+			target.Kind = "StatefulSet"
+		} else {
+			target.APIVersion = "apps.kruise.io/v1beta1"
+			target.Kind = "StatefulSet"
+		}
 	}
 	return target
 }

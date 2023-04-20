@@ -16,6 +16,8 @@ fullnameOverride: ""
 
 clustername: "agent"
 
+enableSchemes: cluster,deployment,cronjob
+
 logLevel: 2
 
 manager:

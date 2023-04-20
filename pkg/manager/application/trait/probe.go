@@ -2,10 +2,15 @@ package trait
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 
 	rocketv1alpha1 "github.com/hex-techs/rocket/api/v1alpha1"
+	"github.com/hex-techs/rocket/pkg/util/gvktools"
+	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
+	kruiseappsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
+	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/util/yaml"
 )
 
@@ -44,58 +49,87 @@ func (a *probe) Handler(ttemp *rocketv1alpha1.Trait, workload *rocketv1alpha1.Wo
 	if err := a.Generate(ttemp, probe); err != nil {
 		return nil, err
 	}
-	if w.Spec.Template.DeploymentTemplate != nil {
-		for i := range w.Spec.Template.DeploymentTemplate.Template.Spec.Containers {
+	resource, gvk, err := gvktools.GetResourceAndGvkFromWorkload(w)
+	if err != nil {
+		return nil, err
+	}
+	if resource == nil {
+		return nil, errors.New("resource template is nil")
+	}
+	gvr := gvktools.SetGVRForWorkload(gvk)
+	// Convert the resource to JSON bytes
+	b, _ := json.Marshal(resource)
+	var raw []byte
+	switch gvr.Resource {
+	case "deployments":
+		// Create a new Deployment from the bytes
+		deploy := &appsv1.Deployment{}
+		json.Unmarshal(b, deploy)
+		for i := range deploy.Spec.Template.Spec.Containers {
 			if probe.LivenessProbe != nil {
-				w.Spec.Template.DeploymentTemplate.Template.Spec.Containers[i].LivenessProbe = probe.LivenessProbe
+				deploy.Spec.Template.Spec.Containers[i].LivenessProbe = probe.LivenessProbe
 			}
 			if probe.ReadinessProbe != nil {
-				w.Spec.Template.DeploymentTemplate.Template.Spec.Containers[i].ReadinessProbe = probe.ReadinessProbe
+				deploy.Spec.Template.Spec.Containers[i].ReadinessProbe = probe.ReadinessProbe
 			}
 			if probe.StartupProbe != nil {
-				w.Spec.Template.DeploymentTemplate.Template.Spec.Containers[i].StartupProbe = probe.StartupProbe
+				deploy.Spec.Template.Spec.Containers[i].StartupProbe = probe.StartupProbe
 			}
 		}
-	}
-	if w.Spec.Template.CloneSetTemplate != nil {
-		for i := range w.Spec.Template.CloneSetTemplate.Template.Spec.Containers {
+		// Convert the Deployment back to JSON
+		raw, _ = json.Marshal(deploy)
+	case "clonesets":
+		clone := &kruiseappsv1alpha1.CloneSet{}
+		json.Unmarshal(b, clone)
+		for i := range clone.Spec.Template.Spec.Containers {
 			if probe.LivenessProbe != nil {
-				w.Spec.Template.CloneSetTemplate.Template.Spec.Containers[i].LivenessProbe = probe.LivenessProbe
+				clone.Spec.Template.Spec.Containers[i].LivenessProbe = probe.LivenessProbe
 			}
 			if probe.ReadinessProbe != nil {
-				w.Spec.Template.CloneSetTemplate.Template.Spec.Containers[i].ReadinessProbe = probe.ReadinessProbe
+				clone.Spec.Template.Spec.Containers[i].ReadinessProbe = probe.ReadinessProbe
 			}
 			if probe.StartupProbe != nil {
-				w.Spec.Template.CloneSetTemplate.Template.Spec.Containers[i].StartupProbe = probe.StartupProbe
+				clone.Spec.Template.Spec.Containers[i].StartupProbe = probe.StartupProbe
 			}
 		}
-	}
-	if w.Spec.Template.StatefulSetTemlate != nil {
-		for i := range w.Spec.Template.StatefulSetTemlate.Template.Spec.Containers {
-			if probe.LivenessProbe != nil {
-				w.Spec.Template.StatefulSetTemlate.Template.Spec.Containers[i].LivenessProbe = probe.LivenessProbe
+		raw, _ = json.Marshal(clone)
+	case "statefulsets":
+		if gvr.Group == "apps" {
+			sts := &appsv1.StatefulSet{}
+			json.Unmarshal(b, sts)
+			for i := range sts.Spec.Template.Spec.Containers {
+				if probe.LivenessProbe != nil {
+					sts.Spec.Template.Spec.Containers[i].LivenessProbe = probe.LivenessProbe
+				}
+				if probe.ReadinessProbe != nil {
+					sts.Spec.Template.Spec.Containers[i].ReadinessProbe = probe.ReadinessProbe
+				}
+				if probe.StartupProbe != nil {
+					sts.Spec.Template.Spec.Containers[i].StartupProbe = probe.StartupProbe
+				}
 			}
-			if probe.ReadinessProbe != nil {
-				w.Spec.Template.StatefulSetTemlate.Template.Spec.Containers[i].ReadinessProbe = probe.ReadinessProbe
-			}
-			if probe.StartupProbe != nil {
-				w.Spec.Template.StatefulSetTemlate.Template.Spec.Containers[i].StartupProbe = probe.StartupProbe
-			}
+			raw, _ = json.Marshal(sts)
 		}
-	}
-	if w.Spec.Template.ExtendStatefulSetTemlate != nil {
-		for i := range w.Spec.Template.ExtendStatefulSetTemlate.Template.Spec.Containers {
-			if probe.LivenessProbe != nil {
-				w.Spec.Template.ExtendStatefulSetTemlate.Template.Spec.Containers[i].LivenessProbe = probe.LivenessProbe
+		if gvr.Group == "apps.kruise.io" {
+			sts := &kruiseappsv1beta1.StatefulSet{}
+			json.Unmarshal(b, sts)
+			for i := range sts.Spec.Template.Spec.Containers {
+				if probe.LivenessProbe != nil {
+					sts.Spec.Template.Spec.Containers[i].LivenessProbe = probe.LivenessProbe
+				}
+				if probe.ReadinessProbe != nil {
+					sts.Spec.Template.Spec.Containers[i].ReadinessProbe = probe.ReadinessProbe
+				}
+				if probe.StartupProbe != nil {
+					sts.Spec.Template.Spec.Containers[i].StartupProbe = probe.StartupProbe
+				}
 			}
-			if probe.ReadinessProbe != nil {
-				w.Spec.Template.ExtendStatefulSetTemlate.Template.Spec.Containers[i].ReadinessProbe = probe.ReadinessProbe
-			}
-			if probe.StartupProbe != nil {
-				w.Spec.Template.ExtendStatefulSetTemlate.Template.Spec.Containers[i].StartupProbe = probe.StartupProbe
-			}
+			raw, _ = json.Marshal(sts)
 		}
+	default:
+		return nil, fmt.Errorf("unsupported workload type: %s", gvr.Resource)
 	}
-
+	// Set the template on the Workload
+	w.Spec.Template.Raw = raw
 	return w, nil
 }

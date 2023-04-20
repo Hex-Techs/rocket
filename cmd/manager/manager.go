@@ -57,12 +57,12 @@ func main() {
 	var enabledControllers []string
 	var disabledWebhook bool
 	var enableScheduler bool
-	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
-	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
-	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
+	pflag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
+	pflag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
+	pflag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
-	flag.BoolVar(&disabledWebhook, "disabled-webhook", false, "Disable webhook server.")
+	pflag.BoolVar(&disabledWebhook, "disabled-webhook", false, "Disable webhook server.")
 	pflag.StringSliceVar(&enabledControllers, "enabled-controllers", []string{}, "The controller which will start.")
 	pflag.BoolVar(&enableScheduler, "enable-scheduler", true, "Whether to start the scheduler.")
 	pflag.IntVar(&param.TimeOut, "timeout", 360, "The heartbeet interval time, default: 360.")

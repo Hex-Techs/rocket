@@ -52,7 +52,8 @@ func main() {
 	param := new(config.CommandParam)
 	kruiseParam := new(config.OpenKruise)
 	kedaParam := new(config.Keda)
-	var enabledSchemes agent.EnabledSchemes
+	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
+	var enabledSchemes []string
 	var metricsAddr string
 	var enableLeaderElection bool
 	var probeAddr string
@@ -61,6 +62,7 @@ func main() {
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
+	pflag.StringSliceVar(&enabledSchemes, "enabled-schemes", []string{""}, "The schemes enabled in this agent cluster.")
 
 	pflag.StringVar(&param.Name, "name", "", "The name of this agent cluster.")
 	pflag.StringVar(&param.Region, "region", "beijing", "The region of this agent cluster.")
@@ -114,20 +116,9 @@ func main() {
 	}
 	cluster.RegisterInit(param, mgr, moduleParam)
 
-	if enabledSchemes.Empty() {
-		enabledSchemes.FillAll()
-	}
-
-	for _, s := range enabledSchemes {
-		setupFunc, supported := agent.SupportedSchemeReconciler[s]
-		if !supported {
-			klog.Errorf("can not find %s in supportedSchemeReconciler", s)
-			os.Exit(1)
-		}
-		if err = setupFunc(mgr); err != nil {
-			klog.Errorf("unable to create %s controller with error: %v", s, err)
-			os.Exit(1)
-		}
+	if err := agent.InitReconcilers(mgr, enabledSchemes); err != nil {
+		setupLog.Error(err, "unable to create controllers")
+		os.Exit(1)
 	}
 
 	//+kubebuilder:scaffold:builder

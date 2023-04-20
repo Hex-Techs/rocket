@@ -46,6 +46,7 @@ spec:
           - --name={{ .Values.clustername }}
           - --bootstrap-token={{ .Values.manager.token }}
           - --master-url={{ .Values.manager.master }}
+          - --enabled-schemes={{ .Values.enableSchemes }}
           {{- with .Values.manager.region }}
           - --region={{ . }}
           {{- end }}

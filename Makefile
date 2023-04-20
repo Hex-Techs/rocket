@@ -71,7 +71,7 @@ build: manifests generate fmt vet ## Build manager binary.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: docker-build
 docker-build: test ## Build docker image with the manager.
-	docker build --no-cache -t ${IMG} .
+	docker build -t ${IMG} .
 
 .PHONY: docker-push
 push-push: ## Push docker image with the manager.

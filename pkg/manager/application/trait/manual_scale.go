@@ -7,6 +7,10 @@ import (
 	"reflect"
 
 	rocketv1alpha1 "github.com/hex-techs/rocket/api/v1alpha1"
+	"github.com/hex-techs/rocket/pkg/util/gvktools"
+	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
+	kruiseappsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
+	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/util/yaml"
 )
 
@@ -48,20 +52,47 @@ func (m *manualScale) Handler(ttemp *rocketv1alpha1.Trait, workload *rocketv1alp
 	if err := m.Generate(ttemp, ms); err != nil {
 		return nil, err
 	}
-	if w.Spec.Template.DeploymentTemplate != nil {
-		w.Spec.Template.DeploymentTemplate.Replicas = ms.Replicas
+	resource, gvk, err := gvktools.GetResourceAndGvkFromWorkload(w)
+	if err != nil {
+		return nil, err
 	}
-	if w.Spec.Template.CloneSetTemplate != nil {
-		w.Spec.Template.CloneSetTemplate.Replicas = ms.Replicas
+	if resource == nil {
+		return nil, errors.New("resource template is nil")
+	}
+	gvr := gvktools.SetGVRForWorkload(gvk)
+	// Convert the resource to JSON bytes
+	b, _ := json.Marshal(resource)
+	var raw []byte
+	switch gvr.Resource {
+	case "deployments":
+		deploy := &appsv1.Deployment{}
+		json.Unmarshal(b, deploy)
+		deploy.Spec.Replicas = ms.Replicas
+		raw, _ = json.Marshal(deploy)
+	case "cloneSets":
+		clone := &kruiseappsv1alpha1.CloneSet{}
+		json.Unmarshal(b, clone)
+		clone.Spec.Replicas = ms.Replicas
 		if ms.ScaleStrategy != nil {
-			w.Spec.Template.CloneSetTemplate.ScaleStrategy.PodsToDelete = ms.ScaleStrategy.PodsToDelete
+			clone.Spec.ScaleStrategy.PodsToDelete = ms.ScaleStrategy.PodsToDelete
 		}
+		raw, _ = json.Marshal(clone)
+	case "statefulsets":
+		if gvr.Group == "apps" {
+			sts := &appsv1.StatefulSet{}
+			json.Unmarshal(b, sts)
+			sts.Spec.Replicas = ms.Replicas
+			raw, _ = json.Marshal(sts)
+		}
+		if gvr.Group == "apps.kruise.io" {
+			sts := &kruiseappsv1beta1.StatefulSet{}
+			json.Unmarshal(b, sts)
+			sts.Spec.Replicas = ms.Replicas
+			raw, _ = json.Marshal(sts)
+		}
+	default:
+		return nil, fmt.Errorf("unsupport workload type: %s", gvr.Resource)
 	}
-	if w.Spec.Template.StatefulSetTemlate != nil {
-		w.Spec.Template.StatefulSetTemlate.Replicas = ms.Replicas
-	}
-	if w.Spec.Template.ExtendStatefulSetTemlate != nil {
-		w.Spec.Template.ExtendStatefulSetTemlate.Replicas = ms.Replicas
-	}
+	w.Spec.Template.Raw = raw
 	return w, nil
 }

@@ -2,6 +2,7 @@ package cronjob
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -76,7 +77,7 @@ func (r *CronJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			}
 			obj.Status.Conditions[config.Pread().Name] = condition.GenerateCondition("CronJob", "CronJob",
 				fmt.Sprintf("%s has been deleted", req), metav1.ConditionFalse)
-			obj.Status.CronjobStatus = nil
+			obj.Status.WorkloadDetails = nil
 			_, err = r.rclient.RocketV1alpha1().Workloads(req.Namespace).UpdateStatus(ctx, obj, metav1.UpdateOptions{})
 			if err != nil {
 				return ctrl.Result{}, err
@@ -92,7 +93,8 @@ func (r *CronJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			}
 			obj.Status.Conditions[config.Pread().Name] = condition.GenerateCondition("CronJob", "CronJob",
 				fmt.Sprintf("%s create successed", req), metav1.ConditionTrue)
-			obj.Status.CronjobStatus = &cj.Status
+			obj.Status.WorkloadDetails = &runtime.RawExtension{}
+			obj.Status.WorkloadDetails.Raw, _ = json.Marshal(cj.Status)
 			_, err = r.rclient.RocketV1alpha1().Workloads(req.Namespace).UpdateStatus(ctx, obj, metav1.UpdateOptions{})
 			if err != nil {
 				return ctrl.Result{}, err

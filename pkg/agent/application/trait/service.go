@@ -63,9 +63,9 @@ func (st *ServiceTrait) Handler(ttemp *rocketv1alpha1.Trait, workload *rocketv1a
 		}
 		return nil
 	}
-	if workload.Spec.Template.CloneSetTemplate == nil && workload.Spec.Template.StatefulSetTemlate == nil {
-		return fmt.Errorf("service trait only support CloneSet and StatefulSet")
-	}
+	// if workload.Spec.Template.CloneSetTemplate == nil && workload.Spec.Template.StatefulSetTemlate == nil {
+	// 	return fmt.Errorf("service trait only support CloneSet and StatefulSet")
+	// }
 	svc := &v1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,

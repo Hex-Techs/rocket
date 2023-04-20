@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	rocketv1alpha1 "github.com/hex-techs/rocket/api/v1alpha1"
@@ -56,35 +57,56 @@ func (r *workloadOption) generateWorkload(kind rocketv1alpha1.WorkloadType, app 
 		},
 		Spec: rocketv1alpha1.WorkloadSpec{
 			Regions:     app.Spec.Regions,
-			Template:    rocketv1alpha1.WorkloadTemplate{},
+			Template:    runtime.RawExtension{},
 			Tolerations: app.Spec.Tolerations,
 		},
 	}
+	var raw []byte
 	switch kind {
 	case rocketv1alpha1.Stateless:
-		if _, ok := app.Annotations[constant.ExtendedStatelessAnnotation]; ok {
+		if _, ok := app.Annotations[constant.ExtendedResourceAnnotation]; ok {
 			cloneset, err := r.generateCloneSet(app, labels)
 			if err != nil {
 				return nil, err
 			}
-			workload.Spec.Template.CloneSetTemplate = cloneset
+			raw, _ = json.Marshal(cloneset)
 		} else {
 			deployment, err := r.generateDeployment(app, labels)
 			if err != nil {
 				return nil, err
 			}
-			workload.Spec.Template.DeploymentTemplate = deployment
+			raw, _ = json.Marshal(deployment)
 		}
 	case rocketv1alpha1.Stateful:
-		workload.Spec.Template.ExtendStatefulSetTemlate = r.generateStatefulSet(app)
+		if _, ok := app.Annotations[constant.ExtendedResourceAnnotation]; ok {
+			ests, err := r.generateStatefulSet(app, labels)
+			if err != nil {
+				return nil, err
+			}
+			raw, _ = json.Marshal(ests)
+		} else {
+			// TODO: 生成原生的statefulset
+			sts, err := r.generateStatefulSet(app, labels)
+			if err != nil {
+				return nil, err
+			}
+			raw, _ = json.Marshal(sts)
+		}
 	case rocketv1alpha1.CronTask:
 		cronjob, err := r.generateCronJob(app, labels)
 		if err != nil {
 			return nil, err
 		}
-		workload.Spec.Template.CronJobTemplate = cronjob
+		raw, _ = json.Marshal(cronjob)
 	case rocketv1alpha1.Task:
+		// TODO: 生成原生的job
+		job, err := r.generateCronJob(app, labels)
+		if err != nil {
+			return nil, err
+		}
+		raw, _ = json.Marshal(job)
 	}
+	workload.Spec.Template.Raw = raw
 	for _, v := range app.Spec.Traits {
 		if traitOption, ok := trait.Traits[v.Kind]; ok {
 			var err error
@@ -99,43 +121,55 @@ func (r *workloadOption) generateWorkload(kind rocketv1alpha1.WorkloadType, app 
 
 // generateDeployment generate deployment
 func (r *workloadOption) generateDeployment(app *rocketv1alpha1.Application, label map[string]string) (
-	*appsv1.DeploymentSpec, error) {
+	*appsv1.Deployment, error) {
 	// NOTE: deployment can not use volumeclaim
 	podtemplate, _, _, err := r.generatePod(app)
 	if err != nil {
 		return nil, err
 	}
 	podtemplate.Labels = label
-	deployment := &appsv1.DeploymentSpec{
-		Selector: &metav1.LabelSelector{
-			MatchLabels: label,
+	deployment := &appsv1.Deployment{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: appsv1.SchemeGroupVersion.String(),
+			Kind:       "Deployment",
 		},
-		Template: podtemplate,
+		Spec: appsv1.DeploymentSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: label,
+			},
+			Template: podtemplate,
+		},
 	}
 	return deployment, nil
 }
 
 // generateCloneSet generate cloneset
 func (r *workloadOption) generateCloneSet(app *rocketv1alpha1.Application, label map[string]string) (
-	*kruiseappsv1alpha1.CloneSetSpec, error) {
+	*kruiseappsv1alpha1.CloneSet, error) {
 	podtemplate, diskSize, _, err := r.generatePod(app)
 	if err != nil {
 		return nil, err
 	}
 	podtemplate.Labels = label
-	cloneset := &kruiseappsv1alpha1.CloneSetSpec{
-		Selector: &metav1.LabelSelector{
-			MatchLabels: label,
+	cloneset := &kruiseappsv1alpha1.CloneSet{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: kruiseappsv1alpha1.SchemeGroupVersion.String(),
+			Kind:       "CloneSet",
 		},
-		Template:             podtemplate,
-		VolumeClaimTemplates: []v1.PersistentVolumeClaim{},
-		UpdateStrategy: kruiseappsv1alpha1.CloneSetUpdateStrategy{
-			// default InPlaceOnly
-			Type: kruiseappsv1alpha1.InPlaceIfPossibleCloneSetUpdateStrategyType,
+		Spec: kruiseappsv1alpha1.CloneSetSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: label,
+			},
+			Template:             podtemplate,
+			VolumeClaimTemplates: []v1.PersistentVolumeClaim{},
+			UpdateStrategy: kruiseappsv1alpha1.CloneSetUpdateStrategy{
+				// default InPlaceOnly
+				Type: kruiseappsv1alpha1.InPlaceIfPossibleCloneSetUpdateStrategyType,
+			},
 		},
 	}
 	if !diskSize.IsZero() {
-		cloneset.VolumeClaimTemplates = append(cloneset.VolumeClaimTemplates,
+		cloneset.Spec.VolumeClaimTemplates = append(cloneset.Spec.VolumeClaimTemplates,
 			v1.PersistentVolumeClaim{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: app.Name + "-data-",
@@ -153,12 +187,13 @@ func (r *workloadOption) generateCloneSet(app *rocketv1alpha1.Application, label
 	return cloneset, nil
 }
 
-func (r *workloadOption) generateStatefulSet(app *rocketv1alpha1.Application) *kruiseappsv1beta1.StatefulSetSpec {
-	return &kruiseappsv1beta1.StatefulSetSpec{}
+func (r *workloadOption) generateStatefulSet(app *rocketv1alpha1.Application, label map[string]string) (
+	*kruiseappsv1beta1.StatefulSet, error) {
+	return &kruiseappsv1beta1.StatefulSet{}, nil
 }
 
 func (r *workloadOption) generateCronJob(app *rocketv1alpha1.Application, label map[string]string) (
-	*batchv1.CronJobSpec, error) {
+	*batchv1.CronJob, error) {
 	// cronjob 忽略存储卷的创建
 	podtemplate, _, temp, err := r.generatePod(app)
 	if err != nil {
@@ -174,21 +209,27 @@ func (r *workloadOption) generateCronJob(app *rocketv1alpha1.Application, label 
 		return nil, err
 	}
 	podtemplate.Spec.RestartPolicy = v1.RestartPolicy(temp.Spec.JobOptions.RestartPolicy)
-	return &batchv1.CronJobSpec{
-		Schedule:                   *temp.Spec.JobOptions.Schedule,
-		Suspend:                    pointer.BoolPtr(temp.Spec.JobOptions.Suspend),
-		SuccessfulJobsHistoryLimit: pointer.Int32Ptr(temp.Spec.JobOptions.SuccessfulJobsHistoryLimit),
-		FailedJobsHistoryLimit:     pointer.Int32Ptr(temp.Spec.JobOptions.FailedJobsHistoryLimit),
-		ConcurrencyPolicy:          batchv1.ConcurrencyPolicy(*temp.Spec.JobOptions.ConcurrencyPolicy),
-		StartingDeadlineSeconds:    pointer.Int64Ptr(temp.Spec.JobOptions.StartingDeadlineSeconds),
-		JobTemplate: batchv1.JobTemplateSpec{
-			ObjectMeta: metav1.ObjectMeta{
-				Labels: label,
-			},
-			Spec: batchv1.JobSpec{
-				BackoffLimit: pointer.Int32Ptr(temp.Spec.JobOptions.BackoffLimit),
-				// TTLSecondsAfterFinished: pointer.Int32Ptr(temp.Spec.JobOptions.TTLSecondsAfterFinished),
-				Template: podtemplate,
+	return &batchv1.CronJob{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: batchv1.SchemeGroupVersion.String(),
+			Kind:       "CronJob",
+		},
+		Spec: batchv1.CronJobSpec{
+			Schedule:                   *temp.Spec.JobOptions.Schedule,
+			Suspend:                    pointer.BoolPtr(temp.Spec.JobOptions.Suspend),
+			SuccessfulJobsHistoryLimit: pointer.Int32Ptr(temp.Spec.JobOptions.SuccessfulJobsHistoryLimit),
+			FailedJobsHistoryLimit:     pointer.Int32Ptr(temp.Spec.JobOptions.FailedJobsHistoryLimit),
+			ConcurrencyPolicy:          batchv1.ConcurrencyPolicy(*temp.Spec.JobOptions.ConcurrencyPolicy),
+			StartingDeadlineSeconds:    pointer.Int64Ptr(temp.Spec.JobOptions.StartingDeadlineSeconds),
+			JobTemplate: batchv1.JobTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: label,
+				},
+				Spec: batchv1.JobSpec{
+					BackoffLimit: pointer.Int32Ptr(temp.Spec.JobOptions.BackoffLimit),
+					// TTLSecondsAfterFinished: pointer.Int32Ptr(temp.Spec.JobOptions.TTLSecondsAfterFinished),
+					Template: podtemplate,
+				},
 			},
 		},
 	}, nil

@@ -4,6 +4,7 @@ metadata:
   name: sample
   namespace: rocket-system
 spec:
+  deploy: true
   resource:
     apiVersion: v1
     kind: Namespace

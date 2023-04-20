@@ -17,43 +17,23 @@ limitations under the License.
 package v1alpha1
 
 import (
-	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
-	kruiseappsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
-	appsv1 "k8s.io/api/apps/v1"
-	batchv1 "k8s.io/api/batch/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	runtime "k8s.io/apimachinery/pkg/runtime"
 )
 
 // WorkloadSpec defines the desired state of Workload
 type WorkloadSpec struct {
 	// +optional
 	Regions []string `json:"regions,omitempty"`
-	// +optional
-	Template WorkloadTemplate `json:"template,omitempty"`
+	// Template must be the complete yaml that users want to distribute.
+	// +kubebuilder:pruning:PreserveUnknownFields
+	// +kubebuilder:validation:EmbeddedResource
+	Template runtime.RawExtension `json:"template,omitempty"`
 	// The workload this Toleration is attached to tolerates any taint that matches
 	// the triple <key,value,effect> using the matching operator <operator>.
 	// +optional
 	Tolerations []v1.Toleration `json:"tolerations,omitempty"`
-}
-
-type WorkloadTemplate struct {
-	// kubernetes native workload, Deployment
-	// +optional
-	DeploymentTemplate *appsv1.DeploymentSpec `json:"deploymentTemplate,omitempty"`
-	// kubernetes native workload, StatefulSet
-	// +optional
-	StatefulSetTemlate *appsv1.StatefulSetSpec `json:"statefulsetTemplate,omitempty"`
-	// openKruise workload, CloneSet
-	// +optional
-	CloneSetTemplate *kruiseappsv1alpha1.CloneSetSpec `json:"clonesetTemplate,omitempty"`
-	// openKruise workload, StatefulSet
-	// +optional
-	ExtendStatefulSetTemlate *kruiseappsv1beta1.StatefulSetSpec `json:"extendStatefulsetTemplate,omitempty"`
-	// +optional
-	CronJobTemplate *batchv1.CronJobSpec `json:"cronjobTemplate,omitempty"`
-	// +optional
-	JobTemplate *batchv1.JobTemplateSpec `json:"jobTemplate,omitempty"`
 }
 
 // WorkloadStatus defines the observed state of Workload
@@ -64,21 +44,12 @@ type WorkloadStatus struct {
 	// +kubebuilder:default=Pending
 	// +kubebuilder:validation:Enum=Pending;Scheduling;Running
 	Phase string `json:"phase,omitempty"`
+	// workload details
+	// +optional
+	WorkloadDetails *runtime.RawExtension `json:"workloadDetails,omitempty"`
 	// cluster workload condition
 	// +optional
 	Conditions map[string]metav1.Condition `json:"conditions,omitempty"`
-	// +optional
-	DeploymentStatus *appsv1.DeploymentStatus `json:"deploymentStatus,omitempty"`
-	// +optional
-	ClonSetStatus *kruiseappsv1alpha1.CloneSetStatus `json:"clonesetStatus,omitempty"`
-	// +optional
-	StatefulSetStatus *appsv1.StatefulSetStatus `json:"statefulsetStatus,omitempty"`
-	// +optional
-	ExtendStatefulSetStatus *kruiseappsv1alpha1.StatefulSetStatus `json:"extendStatefulsetStatus,omitempty"`
-	// +optional
-	CronjobStatus *batchv1.CronJobStatus `json:"cronjobStatus,omitempty"`
-	// +optional
-	JobStatus *batchv1.JobStatus `json:"jobStatus,omitempty"`
 	// +optional
 	Type WorkloadType `json:"type,omitempty"`
 }

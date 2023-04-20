@@ -178,7 +178,7 @@ func (r *ClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 // 当前使用删除重建的方式来处理
 func (r *ClusterReconciler) handleControllerRevision(cluster *rocketv1alpha1.Cluster) error {
 	cr := &appsv1.ControllerRevision{}
-	err := r.Get(context.TODO(), types.NamespacedName{Namespace: "", Name: cluster.Name}, cr)
+	err := r.Get(context.TODO(), types.NamespacedName{Namespace: constant.RocketNamespace, Name: cluster.Name}, cr)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			cr = controllerrevision.GenerateCR(cluster)

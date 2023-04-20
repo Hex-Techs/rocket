@@ -14,6 +14,7 @@ import (
 	listers "github.com/hex-techs/rocket/client/listers/rocket/v1alpha1"
 	"github.com/hex-techs/rocket/pkg/util/config"
 	"github.com/hex-techs/rocket/pkg/util/constant"
+	"github.com/hex-techs/rocket/pkg/util/gvktools"
 	"github.com/hex-techs/rocket/pkg/util/tools"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -220,7 +221,7 @@ func (c *Controller) syncHandler(key string) error {
 	if len(rd.Spec.Resource.Raw) == 0 {
 		return nil
 	}
-	resource, gvk, m, err := match(rd)
+	resource, gvk, m, err := gvktools.Match(rd)
 	if err != nil {
 		return err
 	}
@@ -228,8 +229,8 @@ func (c *Controller) syncHandler(key string) error {
 		// NOTE: 如果没有匹配到资源，那么就不需要处理了
 		return nil
 	}
-	res := setGVR(gvk)
-	namespaced, err := namespacedScope(resource, c.discoveryClient)
+	res := gvktools.SetGVRForDistribution(gvk)
+	namespaced, err := gvktools.NamespacedScope(resource, c.discoveryClient)
 	if err != nil {
 		rd.Status.Conditions = c.condition(rd.Status.Conditions, metav1.ConditionFalse, UnknowReason, err.Error())
 		return c.updatedistributionStatus(rd)
@@ -311,7 +312,7 @@ func (c *Controller) syncHandler(key string) error {
 			}
 		}
 	}
-	if needToUpdate(oldResource, resource) && m {
+	if gvktools.NeedToUpdate(oldResource, resource) && m {
 		// NOTE: 如果资源存在，但是需要更新，那么就更新
 		if namespaced {
 			_, err = c.kubeclientset.Resource(res).Namespace(resource.GetNamespace()).Update(context.TODO(), resource, metav1.UpdateOptions{})

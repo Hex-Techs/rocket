@@ -2,10 +2,16 @@ package trait
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 
 	rocketv1alpha1 "github.com/hex-techs/rocket/api/v1alpha1"
+	"github.com/hex-techs/rocket/pkg/util/gvktools"
+	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
+	kruiseappsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
+	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/yaml"
 )
@@ -45,23 +51,57 @@ func (t *tolerate) Handler(ttemp *rocketv1alpha1.Trait, workload *rocketv1alpha1
 	if err := t.Generate(ttemp, &tole); err != nil {
 		return nil, err
 	}
-	if w.Spec.Template.DeploymentTemplate != nil {
-		w.Spec.Template.DeploymentTemplate.Template.Spec.Tolerations = tole
+	resource, gvk, err := gvktools.GetResourceAndGvkFromWorkload(w)
+	if err != nil {
+		return nil, err
 	}
-	if w.Spec.Template.CloneSetTemplate != nil {
-		w.Spec.Template.CloneSetTemplate.Template.Spec.Tolerations = tole
+	if resource == nil {
+		return nil, errors.New("resource template is nil")
 	}
-	if w.Spec.Template.CronJobTemplate != nil {
-		w.Spec.Template.CronJobTemplate.JobTemplate.Spec.Template.Spec.Tolerations = tole
+	gvr := gvktools.SetGVRForWorkload(gvk)
+	// Convert the resource to JSON bytes
+	b, _ := json.Marshal(resource)
+	var raw []byte
+	switch gvr.Resource {
+	case "deployments":
+		// Create a new Deployment from the bytes
+		deploy := &appsv1.Deployment{}
+		json.Unmarshal(b, deploy)
+		deploy.Spec.Template.Spec.Tolerations = tole
+		// Convert the Deployment back to JSON
+		raw, _ = json.Marshal(deploy)
+	case "clonesets":
+		clone := &kruiseappsv1alpha1.CloneSet{}
+		json.Unmarshal(b, clone)
+		clone.Spec.Template.Spec.Tolerations = tole
+		raw, _ = json.Marshal(clone)
+	case "statefulsets":
+		if gvr.Group == "apps" {
+			sts := &appsv1.StatefulSet{}
+			json.Unmarshal(b, sts)
+			sts.Spec.Template.Spec.Tolerations = tole
+			raw, _ = json.Marshal(sts)
+		}
+		if gvr.Group == "apps.kruise.io" {
+			sts := &kruiseappsv1beta1.StatefulSet{}
+			json.Unmarshal(b, sts)
+			sts.Spec.Template.Spec.Tolerations = tole
+			raw, _ = json.Marshal(sts)
+		}
+	case "cronjobs":
+		cj := &batchv1.CronJob{}
+		json.Unmarshal(b, cj)
+		cj.Spec.JobTemplate.Spec.Template.Spec.Tolerations = tole
+		raw, _ = json.Marshal(cj)
+	case "jobs":
+		j := &batchv1.Job{}
+		json.Unmarshal(b, j)
+		j.Spec.Template.Spec.Tolerations = tole
+		raw, _ = json.Marshal(j)
+	default:
+		return nil, fmt.Errorf("unsupported workload type: %s", gvr.Resource)
 	}
-	if w.Spec.Template.JobTemplate != nil {
-		w.Spec.Template.JobTemplate.Spec.Template.Spec.Tolerations = tole
-	}
-	if w.Spec.Template.StatefulSetTemlate != nil {
-		w.Spec.Template.StatefulSetTemlate.Template.Spec.Tolerations = tole
-	}
-	if w.Spec.Template.ExtendStatefulSetTemlate != nil {
-		w.Spec.Template.ExtendStatefulSetTemlate.Template.Spec.Tolerations = tole
-	}
+	// Set the template on the Workload
+	w.Spec.Template.Raw = raw
 	return w, nil
 }
