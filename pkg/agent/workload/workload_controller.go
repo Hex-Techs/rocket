@@ -283,7 +283,7 @@ func (c *Controller) syncHandler(key string) error {
 				return fmt.Errorf("workload '%s/%s' has not been created in cluster '%s'. The workload corresponding to this cluster cannot be deleted until the creation is successful", namespace, name, v)
 			}
 		}
-		err = c.delete(workload, gvr)
+		err = c.deleteWorkload(workload, gvr)
 		if err != nil {
 			return err
 		}
@@ -298,7 +298,7 @@ func (c *Controller) syncHandler(key string) error {
 		}
 	} else {
 		if tools.ContainsString(workload.Finalizers, constant.WorkloadFinalizer) {
-			if err := c.delete(workload, gvr); err != nil {
+			if err := c.deleteWorkload(workload, gvr); err != nil {
 				return err
 			}
 			workload.Finalizers = tools.RemoveString(workload.Finalizers, constant.WorkloadFinalizer)
@@ -307,40 +307,20 @@ func (c *Controller) syncHandler(key string) error {
 	}
 	// Convert the resource to JSON bytes
 	b, _ := json.Marshal(resource)
+	if err := c.createOrUpdateWorkload(workload, b, gvr); err != nil {
+		if len(workload.Status.Conditions) == 0 {
+			workload.Status.Conditions = make(map[string]metav1.Condition)
+		}
+		workload.Status.Conditions[config.Pread().Name] = condition.GenerateCondition(gvk.Kind, gvk.Kind, err.Error(), metav1.ConditionFalse)
+	}
 	switch gvr.Resource {
 	case "deployments":
-		// 处理deployment
-		deployment := &appsv1.Deployment{}
-		json.Unmarshal(b, deployment)
-		if err := c.handleDeployment(workload, deployment, gvr); err != nil {
-			if len(workload.Status.Conditions) == 0 {
-				workload.Status.Conditions = make(map[string]metav1.Condition)
-			}
-			workload.Status.Conditions[config.Pread().Name] = condition.GenerateCondition("Deployment", "Deployment", err.Error(), metav1.ConditionFalse)
-		}
 		workload.Status.Type = rocketv1alpha1.Stateless
 	case "clonesets":
-		cloneset := &kruiseappsv1alpha1.CloneSet{}
-		json.Unmarshal(b, cloneset)
-		if err := c.handleCloneSet(workload, cloneset, gvr); err != nil {
-			if len(workload.Status.Conditions) == 0 {
-				workload.Status.Conditions = make(map[string]metav1.Condition)
-			}
-			workload.Status.Conditions[config.Pread().Name] = condition.GenerateCondition("CloneSet", "CloneSet", err.Error(), metav1.ConditionFalse)
-		}
 		workload.Status.Type = rocketv1alpha1.Stateless
 	case "cronjobs":
-		cronjob := &batchv1.CronJob{}
-		json.Unmarshal(b, cronjob)
-		if err := c.handleCronjob(workload, cronjob, gvr); err != nil {
-			if len(workload.Status.Conditions) == 0 {
-				workload.Status.Conditions = make(map[string]metav1.Condition)
-			}
-			workload.Status.Conditions[config.Pread().Name] = condition.GenerateCondition("CronJob", "CronJob", err.Error(), metav1.ConditionFalse)
-		}
 		workload.Status.Type = rocketv1alpha1.CronTask
 	}
-	// workload.Status.Phase = "Running"
 	// workload status 由其他的控制器更新
 	return c.updateWorkloadStatus(workload)
 }
@@ -384,15 +364,76 @@ func (c *Controller) enqueueWorkload(obj interface{}) {
 	c.workqueue.Add(key)
 }
 
-func (c *Controller) delete(workload *rocketv1alpha1.Workload, gvr schema.GroupVersionResource) error {
+// deleteWorkload deletes a workload
+func (c *Controller) deleteWorkload(workload *rocketv1alpha1.Workload, gvr schema.GroupVersionResource) error {
 	name := tools.GenerateName(constant.Prefix, workload.Name)
 	return c.kubeclientset.Resource(gvr).Namespace(workload.Namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
 }
 
-func (c *Controller) handleDeployment(workload *rocketv1alpha1.Workload, deploy *appsv1.Deployment,
-	gvr schema.GroupVersionResource) error {
+// createOrUpdateWorkload creates or updates a workload
+func (c *Controller) createOrUpdateWorkload(workload *rocketv1alpha1.Workload, resbyte []byte, gvr schema.GroupVersionResource) error {
 	name := tools.GenerateName(constant.Prefix, workload.Name)
-	deployment := &appsv1.Deployment{
+	var resource *unstructured.Unstructured
+	switch gvr.Resource {
+	case "deployments":
+		deploy := &appsv1.Deployment{}
+		json.Unmarshal(resbyte, deploy)
+		deployment := c.generateDeployment(name, workload, deploy)
+		resource = gvktools.ConvertToUnstructured(deployment)
+	case "clonesets":
+		clone := &kruiseappsv1alpha1.CloneSet{}
+		json.Unmarshal(resbyte, clone)
+		cloneset := c.generateCloneSet(name, workload, clone)
+		resource = gvktools.ConvertToUnstructured(cloneset)
+	case "cronjobs":
+		cj := &batchv1.CronJob{}
+		json.Unmarshal(resbyte, cj)
+		cronjob := c.generateCronjob(name, workload, cj)
+		resource = gvktools.ConvertToUnstructured(cronjob)
+	}
+	old, err := c.kubeclientset.Resource(gvr).Namespace(workload.Namespace).Get(context.TODO(), name, metav1.GetOptions{})
+	if err != nil {
+		if !errors.IsNotFound(err) {
+			return err
+		} else {
+			_, err := c.kubeclientset.Resource(gvr).Namespace(workload.Namespace).Create(context.TODO(), resource, metav1.CreateOptions{})
+			return err
+		}
+	} else {
+		if gvktools.NeedToUpdate(old, resource) {
+			// 1. 设置labels
+			newlables, _, _ := unstructured.NestedFieldCopy(resource.Object, "metadata", "labels")
+			if err := unstructured.SetNestedField(old.Object, newlables, "metadata", "labels"); err != nil {
+				return fmt.Errorf("set labels error: %v", err)
+			}
+			// 2. 设置annotations
+			newannotations, _, _ := unstructured.NestedFieldCopy(resource.Object, "metadata", "annotations")
+			if err := unstructured.SetNestedField(old.Object, newannotations, "metadata", "annotations"); err != nil {
+				return fmt.Errorf("set annotations error: %v", err)
+			}
+			// 3. 设置spec
+			newspec, found, _ := unstructured.NestedFieldCopy(resource.Object, "spec")
+			if found {
+				if err := unstructured.SetNestedField(old.Object, newspec, "spec"); err != nil {
+					return fmt.Errorf("set spec error: %v", err)
+				}
+			}
+			_, err := c.kubeclientset.Resource(gvr).Namespace(workload.Namespace).Update(context.TODO(), old, metav1.UpdateOptions{})
+			return err
+		}
+	}
+	exist, err := c.kubeclientset.Resource(gvr).Namespace(workload.Namespace).Get(context.TODO(), name, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	status, _, _ := unstructured.NestedFieldCopy(exist.Object, "status")
+	workload.Status.WorkloadDetails = &runtime.RawExtension{}
+	workload.Status.WorkloadDetails.Raw, _ = json.Marshal(status)
+	return nil
+}
+
+func (c *Controller) generateDeployment(name string, workload *rocketv1alpha1.Workload, deploy *appsv1.Deployment) *appsv1.Deployment {
+	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: workload.Namespace,
@@ -405,40 +446,10 @@ func (c *Controller) handleDeployment(workload *rocketv1alpha1.Workload, deploy 
 		},
 		Spec: deploy.Spec,
 	}
-	resource := gvktools.ConvertToUnstructured(deployment)
-	old, err := c.kubeclientset.Resource(gvr).Namespace(workload.Namespace).Get(context.TODO(), name, metav1.GetOptions{})
-	if err != nil {
-		if !errors.IsNotFound(err) {
-			return err
-		} else {
-			_, err := c.kubeclientset.Resource(gvr).Namespace(workload.Namespace).Create(context.TODO(), resource, metav1.CreateOptions{})
-			return err
-		}
-	} else {
-		if gvktools.NeedToUpdate(old, resource) {
-			// NOTE: 更新时不在使用resourceVersion
-			// rv, _, _ := unstructured.NestedFieldCopy(resource.Object, "metadata", "resourceVersion")
-			// if err := unstructured.SetNestedField(resource.Object, rv, "metadata", "resourceVersion"); err != nil {
-			// 	panic(fmt.Errorf("failed to set replica value: %v", err))
-			// }
-			_, err := c.kubeclientset.Resource(gvr).Namespace(workload.Namespace).Update(context.TODO(), resource, metav1.UpdateOptions{})
-			return err
-		}
-	}
-	exist, err := c.kubeclientset.Resource(gvr).Namespace(workload.Namespace).Get(context.TODO(), name, metav1.GetOptions{})
-	if err != nil {
-		return err
-	}
-	status, _, _ := unstructured.NestedFieldCopy(exist.Object, "status")
-	workload.Status.WorkloadDetails = &runtime.RawExtension{}
-	workload.Status.WorkloadDetails.Raw, _ = json.Marshal(status)
-	return nil
 }
 
-func (c *Controller) handleCloneSet(workload *rocketv1alpha1.Workload, clone *kruiseappsv1alpha1.CloneSet,
-	gvr schema.GroupVersionResource) error {
-	name := tools.GenerateName(constant.Prefix, workload.Name)
-	cloneset := &kruiseappsv1alpha1.CloneSet{
+func (c *Controller) generateCloneSet(name string, workload *rocketv1alpha1.Workload, clone *kruiseappsv1alpha1.CloneSet) *kruiseappsv1alpha1.CloneSet {
+	return &kruiseappsv1alpha1.CloneSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: workload.Namespace,
@@ -451,40 +462,10 @@ func (c *Controller) handleCloneSet(workload *rocketv1alpha1.Workload, clone *kr
 		},
 		Spec: clone.Spec,
 	}
-	resource := gvktools.ConvertToUnstructured(cloneset)
-	old, err := c.kubeclientset.Resource(gvr).Namespace(workload.Namespace).Get(context.TODO(), name, metav1.GetOptions{})
-	if err != nil {
-		if !errors.IsNotFound(err) {
-			return err
-		} else {
-			_, err := c.kubeclientset.Resource(gvr).Namespace(workload.Namespace).Create(context.TODO(), resource, metav1.CreateOptions{})
-			return err
-		}
-	} else {
-		if gvktools.NeedToUpdate(old, resource) {
-			// NOTE: 更新时不在使用resourceVersion
-			// rv, _, _ := unstructured.NestedFieldCopy(resource.Object, "metadata", "resourceVersion")
-			// if err := unstructured.SetNestedField(resource.Object, rv, "metadata", "resourceVersion"); err != nil {
-			// 	panic(fmt.Errorf("failed to set replica value: %v", err))
-			// }
-			_, err := c.kubeclientset.Resource(gvr).Namespace(workload.Namespace).Update(context.TODO(), resource, metav1.UpdateOptions{})
-			return err
-		}
-	}
-	exist, err := c.kubeclientset.Resource(gvr).Namespace(workload.Namespace).Get(context.TODO(), name, metav1.GetOptions{})
-	if err != nil {
-		return err
-	}
-	status, _, _ := unstructured.NestedFieldCopy(exist.Object, "status")
-	workload.Status.WorkloadDetails = &runtime.RawExtension{}
-	workload.Status.WorkloadDetails.Raw, _ = json.Marshal(status)
-	return nil
 }
 
-func (c *Controller) handleCronjob(workload *rocketv1alpha1.Workload, cj *batchv1.CronJob,
-	gvr schema.GroupVersionResource) error {
-	name := tools.GenerateName(constant.Prefix, workload.Name)
-	cronjob := &batchv1.CronJob{
+func (c *Controller) generateCronjob(name string, workload *rocketv1alpha1.Workload, cj *batchv1.CronJob) *batchv1.CronJob {
+	return &batchv1.CronJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: workload.Namespace,
@@ -497,32 +478,4 @@ func (c *Controller) handleCronjob(workload *rocketv1alpha1.Workload, cj *batchv
 		},
 		Spec: cj.Spec,
 	}
-	resource := gvktools.ConvertToUnstructured(cronjob)
-	old, err := c.kubeclientset.Resource(gvr).Namespace(workload.Namespace).Get(context.TODO(), name, metav1.GetOptions{})
-	if err != nil {
-		if !errors.IsNotFound(err) {
-			return err
-		} else {
-			_, err := c.kubeclientset.Resource(gvr).Namespace(workload.Namespace).Create(context.TODO(), resource, metav1.CreateOptions{})
-			return err
-		}
-	} else {
-		if gvktools.NeedToUpdate(old, resource) {
-			// NOTE: 更新时不在使用resourceVersion
-			// rv, _, _ := unstructured.NestedFieldCopy(resource.Object, "metadata", "resourceVersion")
-			// if err := unstructured.SetNestedField(resource.Object, rv, "metadata", "resourceVersion"); err != nil {
-			// 	panic(fmt.Errorf("failed to set replica value: %v", err))
-			// }
-			_, err := c.kubeclientset.Resource(gvr).Namespace(workload.Namespace).Update(context.TODO(), resource, metav1.UpdateOptions{})
-			return err
-		}
-	}
-	exist, err := c.kubeclientset.Resource(gvr).Namespace(workload.Namespace).Get(context.TODO(), name, metav1.GetOptions{})
-	if err != nil {
-		return err
-	}
-	status, _, _ := unstructured.NestedFieldCopy(exist.Object, "status")
-	workload.Status.WorkloadDetails = &runtime.RawExtension{}
-	workload.Status.WorkloadDetails.Raw, _ = json.Marshal(status)
-	return nil
 }

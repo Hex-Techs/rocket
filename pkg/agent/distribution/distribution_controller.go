@@ -314,10 +314,36 @@ func (c *Controller) syncHandler(key string) error {
 	}
 	if gvktools.NeedToUpdate(oldResource, resource) && m {
 		// NOTE: 如果资源存在，但是需要更新，那么就更新
-		if namespaced {
-			_, err = c.kubeclientset.Resource(res).Namespace(resource.GetNamespace()).Update(context.TODO(), resource, metav1.UpdateOptions{})
+		// 1. 设置labels
+		newlables, _, _ := unstructured.NestedFieldCopy(resource.Object, "metadata", "labels")
+		if err := unstructured.SetNestedField(oldResource.Object, newlables, "metadata", "labels"); err != nil {
+			return fmt.Errorf("set labels error: %v", err)
+		}
+		// 2. 设置annotations
+		newannotations, _, _ := unstructured.NestedFieldCopy(resource.Object, "metadata", "annotations")
+		if err := unstructured.SetNestedField(oldResource.Object, newannotations, "metadata", "annotations"); err != nil {
+			return fmt.Errorf("set annotations error: %v", err)
+		}
+		// 3. 设置spec
+		newspec, found, _ := unstructured.NestedFieldCopy(resource.Object, "spec")
+		if found {
+			if err := unstructured.SetNestedField(oldResource.Object, newspec, "spec"); err != nil {
+				return fmt.Errorf("set spec error: %v", err)
+			}
 		} else {
-			_, err = c.kubeclientset.Resource(res).Update(context.TODO(), resource, metav1.UpdateOptions{})
+			// 4. 设置 data
+			newdata, found, _ := unstructured.NestedFieldCopy(resource.Object, "data")
+			if !found {
+				return fmt.Errorf("not found spec or data")
+			}
+			if err := unstructured.SetNestedField(oldResource.Object, newdata, "data"); err != nil {
+				return fmt.Errorf("set data error: %v", err)
+			}
+		}
+		if namespaced {
+			_, err = c.kubeclientset.Resource(res).Namespace(resource.GetNamespace()).Update(context.TODO(), oldResource, metav1.UpdateOptions{})
+		} else {
+			_, err = c.kubeclientset.Resource(res).Update(context.TODO(), oldResource, metav1.UpdateOptions{})
 		}
 		if err != nil {
 			rd.Status.Conditions = c.condition(rd.Status.Conditions, metav1.ConditionFalse, ResourceReadyReason, err.Error())

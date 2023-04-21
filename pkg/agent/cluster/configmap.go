@@ -47,7 +47,10 @@ func configmap(p *agentconfig.ModuleParams, mgr manager.Manager) (*createTag, er
 	kruise := isCreateOrNot("kruise", gcm.Data, cm.DeepCopy().Data)
 	keda := isCreateOrNot("keda", gcm.Data, cm.DeepCopy().Data)
 	if kruise || keda {
-		_, err = cli.CoreV1().ConfigMaps(constant.RocketNamespace).Update(ctx, gcm, metav1.UpdateOptions{})
+		cm.Data = gcm.Data
+		cm.Labels = gcm.Labels
+		cm.Annotations = gcm.Annotations
+		_, err = cli.CoreV1().ConfigMaps(constant.RocketNamespace).Update(ctx, cm, metav1.UpdateOptions{})
 		if err != nil {
 			return ct, err
 		}

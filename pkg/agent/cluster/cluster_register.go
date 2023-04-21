@@ -212,7 +212,8 @@ func (r *register) syncAuthData(mgr manager.Manager) *register {
 	r.currentCluster.Spec.CertData = config.CertData
 	r.currentCluster.Spec.KeyData = config.KeyData
 	r.currentCluster.Spec.Token = []byte(config.BearerToken)
-	updated, err := r.cli.RocketV1alpha1().Clusters().Update(context.TODO(), r.currentCluster, metav1.UpdateOptions{})
+	cls.Spec = r.currentCluster.Spec
+	updated, err := r.cli.RocketV1alpha1().Clusters().Update(context.TODO(), cls, metav1.UpdateOptions{})
 	if err != nil {
 		klog.V(0).Infof("sync auth data with error: %v", err)
 		return r
