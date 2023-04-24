@@ -25,6 +25,7 @@ import (
 	"time"
 
 	mapset "github.com/deckarep/golang-set/v2"
+	"github.com/google/go-cmp/cmp"
 	rocketv1alpha1 "github.com/hex-techs/rocket/api/v1alpha1"
 	clientset "github.com/hex-techs/rocket/client/clientset/versioned"
 	workloadscheme "github.com/hex-techs/rocket/client/clientset/versioned/scheme"
@@ -89,7 +90,23 @@ func NewController(
 	workloadInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: controller.enqueueWorkload,
 		UpdateFunc: func(old, new interface{}) {
-			controller.enqueueWorkload(new)
+			o, n := old.(*rocketv1alpha1.Workload).DeepCopy(), new.(*rocketv1alpha1.Workload).DeepCopy()
+			needupdate := false
+			needupdate = needupdate || !cmp.Equal(o.Spec, n.Spec)
+			needupdate = needupdate || !cmp.Equal(o.ObjectMeta, n.ObjectMeta)
+			oc, nc := map[string]metav1.Condition{}, map[string]metav1.Condition{}
+			for k, v := range o.Status.Conditions {
+				v.LastTransitionTime = metav1.Time{}
+				oc[k] = v
+			}
+			for k, v := range n.Status.Conditions {
+				v.LastTransitionTime = metav1.Time{}
+				nc[k] = v
+			}
+			o.Status.Conditions, n.Status.Conditions = oc, nc
+			if needupdate || !cmp.Equal(o.Status, n.Status) {
+				controller.enqueueWorkload(new)
+			}
 		},
 		DeleteFunc: controller.enqueueWorkload,
 	})
