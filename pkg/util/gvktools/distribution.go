@@ -39,13 +39,20 @@ func GetResourceAndGvkFromDistribution(rd *rocketv1alpha1.Distribution) (*unstru
 func Match(rd *rocketv1alpha1.Distribution) (*unstructured.Unstructured, *schema.GroupVersionKind, bool, error) {
 	// 获取 distribution 的集群信息
 	var m bool
-	for i, v := range rd.Spec.Targets.IncludedClusters.List {
-		if v.Name == config.Pread().Name {
+	if rd.Spec.Targets.All != nil {
+		if *rd.Spec.Targets.All {
 			m = true
-			break
 		}
-		if i == len(rd.Spec.Targets.IncludedClusters.List)-1 {
-			m = false
+	}
+	if len(rd.Spec.Targets.IncludedClusters.List) != 0 {
+		for i, v := range rd.Spec.Targets.IncludedClusters.List {
+			if v.Name == config.Pread().Name {
+				m = true
+				break
+			}
+			if i == len(rd.Spec.Targets.IncludedClusters.List)-1 {
+				m = false
+			}
 		}
 	}
 	resource, gvk, err := GetResourceAndGvkFromDistribution(rd)
