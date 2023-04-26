@@ -27,6 +27,9 @@ type DistributionTargets struct {
 	// If IncludedClusters is not empty, Resource will be distributed to the listed clusters.
 	// +optional
 	IncludedClusters DistributionTargetClusters `json:"includedClusters,omitempty"`
+	// All will distribute Resource to all clusters.
+	// +optional
+	All *bool `json:"all,omitempty"`
 }
 
 type DistributionTargetClusters struct {

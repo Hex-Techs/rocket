@@ -54,6 +54,9 @@ spec:
                 description: Targets defines the clusters that users want to distribute
                   to.
                 properties:
+                  all:
+                    description: All will distribute Resource to all clusters.
+                    type: boolean
                   includedClusters:
                     description: If IncludedClusters is not empty, Resource will be
                       distributed to the listed clusters.
