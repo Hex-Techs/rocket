@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	rocketv1alpha1 "github.com/hex-techs/rocket/api/v1alpha1"
-	"github.com/hex-techs/rocket/pkg/util/constant"
+	"github.com/hex-techs/rocket/pkg/utils/constant"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 

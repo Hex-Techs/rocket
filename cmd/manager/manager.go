@@ -22,7 +22,7 @@ import (
 
 	rocketv1alpha1 "github.com/hex-techs/rocket/api/v1alpha1"
 	"github.com/hex-techs/rocket/pkg/manager"
-	"github.com/hex-techs/rocket/pkg/util/config"
+	"github.com/hex-techs/rocket/pkg/utils/config"
 	"github.com/hex-techs/rocket/pkg/webhook"
 	kruiseapi "github.com/openkruise/kruise-api"
 	"github.com/spf13/pflag"

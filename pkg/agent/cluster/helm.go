@@ -3,8 +3,8 @@ package cluster
 import (
 	"context"
 
-	agentconfig "github.com/hex-techs/rocket/pkg/util/config"
-	"github.com/hex-techs/rocket/pkg/util/constant"
+	agentconfig "github.com/hex-techs/rocket/pkg/utils/config"
+	"github.com/hex-techs/rocket/pkg/utils/constant"
 	helm "github.com/mittwald/go-helm-client"
 	"helm.sh/helm/v3/pkg/release"
 	"helm.sh/helm/v3/pkg/repo"

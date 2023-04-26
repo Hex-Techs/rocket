@@ -3,7 +3,7 @@ package trait
 import (
 	rocketv1alpha1 "github.com/hex-techs/rocket/api/v1alpha1"
 	clientset "github.com/hex-techs/rocket/client/clientset/versioned"
-	"github.com/hex-techs/rocket/pkg/util/constant"
+	"github.com/hex-techs/rocket/pkg/utils/constant"
 	kclientset "github.com/openkruise/kruise-api/client/clientset/versioned"
 	"k8s.io/client-go/kubernetes"
 )

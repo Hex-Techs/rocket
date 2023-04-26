@@ -4,8 +4,8 @@ import (
 	"fmt"
 
 	rocketv1alpha1 "github.com/hex-techs/rocket/api/v1alpha1"
-	lr "github.com/hex-techs/rocket/pkg/util/resource"
-	"github.com/hex-techs/rocket/pkg/util/syntax"
+	lr "github.com/hex-techs/rocket/pkg/utils/resource"
+	"github.com/hex-techs/rocket/pkg/utils/syntax"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 )

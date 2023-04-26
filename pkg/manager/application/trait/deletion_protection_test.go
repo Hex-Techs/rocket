@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	rocketv1alpha1 "github.com/hex-techs/rocket/api/v1alpha1"
-	"github.com/hex-techs/rocket/pkg/util/constant"
+	"github.com/hex-techs/rocket/pkg/utils/constant"
 )
 
 var (

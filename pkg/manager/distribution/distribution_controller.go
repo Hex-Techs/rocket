@@ -21,8 +21,8 @@ import (
 	"time"
 
 	rocketv1alpha1 "github.com/hex-techs/rocket/api/v1alpha1"
-	"github.com/hex-techs/rocket/pkg/util/constant"
-	"github.com/hex-techs/rocket/pkg/util/tools"
+	"github.com/hex-techs/rocket/pkg/utils/constant"
+	"github.com/hex-techs/rocket/pkg/utils/tools"
 	"golang.org/x/time/rate"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

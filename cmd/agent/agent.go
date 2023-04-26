@@ -23,7 +23,7 @@ import (
 
 	"github.com/hex-techs/rocket/pkg/agent"
 	"github.com/hex-techs/rocket/pkg/agent/cluster"
-	"github.com/hex-techs/rocket/pkg/util/config"
+	"github.com/hex-techs/rocket/pkg/utils/config"
 	kruiseapi "github.com/openkruise/kruise-api"
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/runtime"

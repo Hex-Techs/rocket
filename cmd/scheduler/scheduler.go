@@ -6,7 +6,7 @@ import (
 
 	rocketv1alpha1 "github.com/hex-techs/rocket/api/v1alpha1"
 	"github.com/hex-techs/rocket/pkg/scheduler"
-	"github.com/hex-techs/rocket/pkg/util/config"
+	"github.com/hex-techs/rocket/pkg/utils/config"
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"

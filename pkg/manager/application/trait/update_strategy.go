@@ -7,7 +7,7 @@ import (
 	"reflect"
 
 	rocketv1alpha1 "github.com/hex-techs/rocket/api/v1alpha1"
-	"github.com/hex-techs/rocket/pkg/util/gvktools"
+	"github.com/hex-techs/rocket/pkg/utils/gvktools"
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	kruiseappsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
 	"k8s.io/apimachinery/pkg/util/yaml"

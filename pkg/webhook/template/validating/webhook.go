@@ -8,7 +8,7 @@ import (
 
 	mapset "github.com/deckarep/golang-set/v2"
 	rocketv1alpha1 "github.com/hex-techs/rocket/api/v1alpha1"
-	"github.com/hex-techs/rocket/pkg/util/syntax"
+	"github.com/hex-techs/rocket/pkg/utils/syntax"
 	v1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"

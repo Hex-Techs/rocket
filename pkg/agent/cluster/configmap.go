@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 
 	"github.com/google/go-cmp/cmp"
-	agentconfig "github.com/hex-techs/rocket/pkg/util/config"
-	"github.com/hex-techs/rocket/pkg/util/constant"
+	agentconfig "github.com/hex-techs/rocket/pkg/utils/config"
+	"github.com/hex-techs/rocket/pkg/utils/constant"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
