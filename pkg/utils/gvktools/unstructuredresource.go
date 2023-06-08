@@ -14,8 +14,12 @@ func ConvertToUnstructured(resourceObject runtime.Object) (resource *unstructure
 		// If it is, return it
 		return unstructuredResource
 	default:
-		// If not, return nil
-		return nil
+		// Convert Deployment object to Unstructured object
+		obj, err := runtime.DefaultUnstructuredConverter.ToUnstructured(resourceObject)
+		if err != nil {
+			return nil
+		}
+		return &unstructured.Unstructured{Object: obj}
 	}
 }
 

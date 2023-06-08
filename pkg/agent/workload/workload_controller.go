@@ -397,16 +397,21 @@ func (c *Controller) createOrUpdateWorkload(workload *rocketv1alpha1.Workload, r
 		json.Unmarshal(resbyte, deploy)
 		deployment := c.generateDeployment(name, workload, deploy)
 		resource = gvktools.ConvertToUnstructured(deployment)
+		klog.V(4).Infof("has resource 'deployments', generate resource: %v", resource)
 	case "clonesets":
 		clone := &kruiseappsv1alpha1.CloneSet{}
 		json.Unmarshal(resbyte, clone)
 		cloneset := c.generateCloneSet(name, workload, clone)
 		resource = gvktools.ConvertToUnstructured(cloneset)
+		klog.V(4).Infof("has resource 'clonesets', generate resource: %v", resource)
 	case "cronjobs":
 		cj := &batchv1.CronJob{}
 		json.Unmarshal(resbyte, cj)
 		cronjob := c.generateCronjob(name, workload, cj)
 		resource = gvktools.ConvertToUnstructured(cronjob)
+		klog.V(4).Infof("has resource 'cronjobs', generate resource: %v", resource)
+	default:
+		klog.V(4).Infof("no resource '%s' found", gvr.Resource)
 	}
 	old, err := c.kubeclientset.Resource(gvr).Namespace(workload.Namespace).Get(context.TODO(), name, metav1.GetOptions{})
 	if err != nil {

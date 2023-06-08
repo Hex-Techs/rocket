@@ -38,7 +38,7 @@ type ClusterResult struct {
 }
 
 func Scheduler(workload *rocketv1alpha1.Workload) []ClusterResult {
-	klog.V(4).Infof("Scheduler workload %#v", workload)
+	klog.V(4).Infof("Scheduler workload %s/%s", workload.Namespace, workload.Name)
 	var scoreMap = []ClusterResult{}
 	regions := mapset.NewSet[string]()
 	for i := range workload.Spec.Regions {
@@ -55,6 +55,9 @@ func Scheduler(workload *rocketv1alpha1.Workload) []ClusterResult {
 	}
 	gvr := gvktools.SetGVRForWorkload(gvk)
 	b, _ := json.Marshal(resource)
+	p := newPod(workload)
+	klog.V(4).Infof("Pod: %+v", p.Spec)
+	klog.V(4).Infof("Resource: %v", p.Spec.Containers[0].Resources)
 	ClientMap.Range(func(key, value interface{}) bool {
 		name := key.(string)
 		v := value.(*ClusterClient)
@@ -73,7 +76,6 @@ func Scheduler(workload *rocketv1alpha1.Workload) []ClusterResult {
 			Env:    string(v.Env),
 		})
 		for _, node := range v.Controller().List() {
-			p := newPod(workload)
 			if schedule.Filter(context.TODO(), p, node) {
 				// 为每一个符合要求的集群和节点计算分数
 				for idx, cluster := range scoreMap {
