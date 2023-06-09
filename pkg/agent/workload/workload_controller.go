@@ -455,13 +455,14 @@ func (c *Controller) createOrUpdateWorkload(workload *rocketv1alpha1.Workload, r
 }
 
 func (c *Controller) generateDeployment(name string, workload *rocketv1alpha1.Workload, deploy *appsv1.Deployment) *appsv1.Deployment {
+	w := workload.DeepCopy()
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
-			Namespace: workload.Namespace,
-			Labels:    workload.Labels,
+			Namespace: w.Namespace,
+			Labels:    w.Labels,
 			Annotations: map[string]string{
-				constant.WorkloadNameLabel: workload.Name,
+				constant.WorkloadNameLabel: w.Name,
 				constant.GenerateNameLabel: name,
 				constant.AppNameLabel:      name,
 			},
@@ -471,13 +472,14 @@ func (c *Controller) generateDeployment(name string, workload *rocketv1alpha1.Wo
 }
 
 func (c *Controller) generateCloneSet(name string, workload *rocketv1alpha1.Workload, clone *kruiseappsv1alpha1.CloneSet) *kruiseappsv1alpha1.CloneSet {
+	w := workload.DeepCopy()
 	return &kruiseappsv1alpha1.CloneSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
-			Namespace: workload.Namespace,
-			Labels:    workload.Labels,
+			Namespace: w.Namespace,
+			Labels:    w.Labels,
 			Annotations: map[string]string{
-				constant.WorkloadNameLabel: workload.Name,
+				constant.WorkloadNameLabel: w.Name,
 				constant.GenerateNameLabel: name,
 				constant.AppNameLabel:      name,
 			},
@@ -487,13 +489,14 @@ func (c *Controller) generateCloneSet(name string, workload *rocketv1alpha1.Work
 }
 
 func (c *Controller) generateCronjob(name string, workload *rocketv1alpha1.Workload, cj *batchv1.CronJob) *batchv1.CronJob {
+	w := workload.DeepCopy()
 	return &batchv1.CronJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
-			Namespace: workload.Namespace,
-			Labels:    workload.Labels,
+			Namespace: w.Namespace,
+			Labels:    w.Labels,
 			Annotations: map[string]string{
-				constant.WorkloadNameLabel: workload.Name,
+				constant.WorkloadNameLabel: w.Name,
 				constant.GenerateNameLabel: name,
 				constant.AppNameLabel:      name,
 			},

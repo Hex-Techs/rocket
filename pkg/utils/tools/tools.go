@@ -7,11 +7,11 @@ import (
 )
 
 func GenerateName(prefix, name string) string {
-	return prefix + name
+	return fmt.Sprintf("%s-%s", prefix, name)
 }
 
 func GenerateNameWithHash(prefix, name string) string {
-	n := prefix + name
+	n := fmt.Sprintf("%s-%s", prefix, name)
 	h := sha1.New()
 	h.Write([]byte(n))
 	sl := strings.Split(fmt.Sprintf("%x", h.Sum(nil)), "")
