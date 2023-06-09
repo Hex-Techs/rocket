@@ -38,6 +38,14 @@ make install
 make uninstall
 ```
 
+### Roadmap
+
+- [x] 支持 Deployment
+- [x] 支持 CloneSet
+- [x] 支持 CronJob
+- [ ] 支持 StatefulSet
+- [ ] 支持 kruise StatefulSet
+- [ ] 支持 Job 
 ## License
 
 Copyright 2023.
