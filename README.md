@@ -38,6 +38,10 @@ make install
 make uninstall
 ```
 
+4. 安装 `OpenKruise`
+
+针对 `k3s` 集群中安装 `OpenKruise` 需要指定配置 `--set daemon.socketLocation="/run/k3s"`
+
 ### Roadmap
 
 - [x] 支持 Deployment
@@ -46,6 +50,8 @@ make uninstall
 - [ ] 支持 StatefulSet
 - [ ] 支持 kruise StatefulSet
 - [ ] 支持 Job 
+
+
 ## License
 
 Copyright 2023.
