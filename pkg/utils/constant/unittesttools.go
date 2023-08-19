@@ -11,13 +11,13 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
-// Testworkload is a workload for test
-var Testworkload = rocketv1alpha1.Workload{
+// Testapplication is a application for test
+var Testapplication = rocketv1alpha1.Application{
 	ObjectMeta: metav1.ObjectMeta{
 		Name:      "test",
 		Namespace: "default",
 	},
-	Spec: rocketv1alpha1.WorkloadSpec{
+	Spec: rocketv1alpha1.ApplicationSpec{
 		Template: runtime.RawExtension{},
 	},
 }

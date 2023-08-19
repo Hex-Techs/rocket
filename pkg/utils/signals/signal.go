@@ -17,7 +17,7 @@ import (
 	"os"
 	"os/signal"
 
-	"k8s.io/klog/v2"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 var onlyOneSignalHandler = make(chan struct{})
@@ -51,10 +51,10 @@ func SetupSignalHandler(s chan struct{}) (stopCh <-chan struct{}) {
 	go func() {
 		select {
 		case <-c:
-			klog.V(0).Info("Received signal from signal")
+			log.Log.V(0).Info("Received signal from signal")
 			close(stop)
 		case <-s:
-			klog.V(0).Info("Received signal, terminating")
+			log.Log.V(0).Info("Received signal, terminating")
 			close(stop)
 			return
 		}

@@ -17,9 +17,9 @@ func main() {
 	var t string
 	var cluster string
 	// var approve bool
-	pflag.StringVar(&namespace, "namespace", "", "The namespace of workload")
-	pflag.StringVar(&name, "name", "", "The name of workload")
-	pflag.StringVar(&t, "type", "Scheduling", "The schedule type of workload")
+	pflag.StringVar(&namespace, "namespace", "", "The namespace of application")
+	pflag.StringVar(&name, "name", "", "The name of application")
+	pflag.StringVar(&t, "type", "Scheduling", "The schedule type of application")
 	pflag.StringVar(&cluster, "cluster", "", "scheduler to this cluster")
 	pflag.Parse()
 
@@ -33,17 +33,17 @@ func main() {
 		panic(err)
 	}
 	cli := cli.NewForConfigOrDie(config)
-	workload, err := cli.RocketV1alpha1().Workloads(namespace).Get(context.TODO(), name, metav1.GetOptions{})
+	application, err := cli.RocketV1alpha1().Applications(namespace).Get(context.TODO(), name, metav1.GetOptions{})
 	if err != nil {
 		panic(err)
 	}
 	if cluster != "" {
-		workload.Status.Clusters = []string{cluster}
-		workload.Status.Phase = "Running"
+		application.Status.Clusters = []string{cluster}
+		application.Status.Phase = "Running"
 	} else {
-		workload.Status.Phase = t
+		application.Status.Phase = t
 	}
-	_, err = cli.RocketV1alpha1().Workloads(namespace).UpdateStatus(context.TODO(), workload, metav1.UpdateOptions{})
+	_, err = cli.RocketV1alpha1().Applications(namespace).UpdateStatus(context.TODO(), application, metav1.UpdateOptions{})
 	if err != nil {
 		panic(err)
 	}

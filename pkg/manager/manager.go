@@ -7,9 +7,8 @@ import (
 	"github.com/hex-techs/rocket/pkg/manager/application"
 	"github.com/hex-techs/rocket/pkg/manager/cluster"
 	"github.com/hex-techs/rocket/pkg/manager/distribution"
-	"github.com/hex-techs/rocket/pkg/manager/template"
-	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 )
 
@@ -27,7 +26,6 @@ func Init(mgr ctrl.Manager) {
 	defer lock.Unlock()
 	controllers = map[string]SetupWithManagerFunc{
 		"cluster":      cluster.NewRecociler(mgr).SetupWithManager,
-		"template":     template.NewRecociler(mgr).SetupWithManager,
 		"application":  application.NewRecociler(mgr).SetupWithManager,
 		"distribution": distribution.NewReconciler(mgr).SetupWithManager,
 	}
@@ -56,7 +54,7 @@ func setup(c string, mgr manager.Manager) error {
 	if set, ok := controllers[c]; !ok {
 		return fmt.Errorf("unknown controller %s", c)
 	} else {
-		klog.V(0).Infof("start '%s' controller", c)
+		log.Log.V(0).Info("start controller", "name", c)
 		if err := set(mgr); err != nil {
 			return err
 		}

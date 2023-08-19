@@ -14,7 +14,8 @@ enabledControllers: ""
 
 disabledWebhook: false
 
-logLevel: 2
+logLevel: 5
+logEncoder: json
 
 bootstrap:
   id: 07401b
@@ -54,8 +55,8 @@ resources:
   # resources, such as Minikube. If you do want to specify resources, uncomment the following
   # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
   limits:
-    cpu: 100m
-    memory: 128Mi
+    cpu: 1
+    memory: 1Gi
   requests:
     cpu: 100m
     memory: 128Mi

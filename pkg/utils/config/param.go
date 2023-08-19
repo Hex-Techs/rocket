@@ -1,8 +1,21 @@
 package config
 
-import "fmt"
+import (
+	"fmt"
 
-var param *CommandParam
+	zaplog "go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+)
+
+var (
+	param   *CommandParam
+	LogOpts = zap.Options{
+		Development: true,
+		TimeEncoder: zapcore.ISO8601TimeEncoder,
+		ZapOpts:     []zaplog.Option{zaplog.AddCaller()},
+	}
+)
 
 // 命令行参数选项
 type CommandParam struct {
@@ -12,8 +25,6 @@ type CommandParam struct {
 	Region string
 	// 云环境
 	Area string
-	// 环境
-	Environment string
 	// master url
 	MasterURL string
 	// bootstrap token

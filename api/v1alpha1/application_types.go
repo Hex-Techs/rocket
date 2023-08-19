@@ -19,6 +19,7 @@ package v1alpha1
 import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	runtime "k8s.io/apimachinery/pkg/runtime"
 )
 
 // ApplicationSpec defines the desired state of Application
@@ -38,17 +39,19 @@ type ApplicationSpec struct {
 	// +required
 	// +kubebuilder:validation:Required
 	Regions []string `json:"regions,omitempty"`
-	// The variables of this application.
+	// The number of replicas of application pods, it will override the replicas in template.
 	// +optional
-	Variables []Variable `json:"variables,omitempty"`
-	// The templates were used by this application.
-	// +optional
-	Templates []ApplicationTemplate `json:"templates,omitempty"`
+	Replicas *int64 `json:"replicas,omitempty"`
+	// Template must be the complete yaml that users want to distribute.
+	// +kubebuilder:pruning:PreserveUnknownFields
+	// +kubebuilder:validation:EmbeddedResource
+	Template runtime.RawExtension `json:"template,omitempty"`
 	// The ac this Toleration is attached to tolerates any taint that matches
 	// the triple <key,value,effect> using the matching operator <operator>.
 	// +optional
 	Tolerations []v1.Toleration `json:"tolerations,omitempty"`
 	// The operation traits of this application.
+	// +optional
 	Traits []Trait `json:"traits,omitempty"`
 }
 
@@ -65,75 +68,87 @@ type Trait struct {
 	Template string `json:"template,omitempty"`
 }
 
-type Variable struct {
-	// The name of Variable
-	// +required
-	// +kubebuilder:validation:Required
-	Name string `json:"name,omitempty"`
-	// +required
-	// +kubebuilder:validation:Required
-	Value string `json:"value,omitempty"`
-}
-
-// ApplicationTemplate is the template used by.
-type ApplicationTemplate struct {
-	// The template name.
-	// +required
-	// +kubebuilder:validation:Required
-	Name string `json:"name,omitempty"`
-	// The generate container name for workload,
-	// this is based on container, if not set.
-	// +optional
-	InstanceName string `json:"instanceName,omitempty"`
-	// How to set this to owerwrite the default image.
-	// +optional
-	ImageDefine []ImageDefine `json:"imageDefine,omitempty"`
-	// +optional
-	ParameterValues []ParameterValue `json:"parameterValues,omitempty"`
-}
-
-type ImageDefine struct {
-	// The container name of template conatiner
-	// +required
-	// +kubebuilder:validation:Required
-	ContainerName string `json:"containerName,omitempty"`
-	// +required
-	// +kubebuilder:validation:Required
-	Image string `json:"image,omitempty"`
-}
-
-// ParameterValue the parameter of this template and overwrite.
-type ParameterValue struct {
-	// parameter name.
-	// +required
-	// +kubebuilder:validation:Required
-	Name string `json:"name,omitempty"`
-	// The value of this parameter, support '[fromVariable(message)]'
-	// or metadata value.
-	// +required
-	// +kubebuilder:validation:Required
-	Value string `json:"value,omitempty"`
-}
-
 // ApplicationStatus defines the observed state of Application
 type ApplicationStatus struct {
-	// The result of the applicationconfiguration validation
+	// the cluster of application
 	// +optional
-	Conditions []metav1.Condition `json:"conditions,omitempty"`
+	Clusters []string `json:"clusters,omitempty"`
+	// the phase of the ApplicationConfiguration
+	// +kubebuilder:default=Pending
+	// +kubebuilder:validation:Enum=Pending;Scheduling;Running
+	Phase string `json:"phase,omitempty"`
+	// application details
 	// +optional
-	WorkloadType WorkloadType `json:"workloadType,omitempty"`
+	ApplicationDetails *runtime.RawExtension `json:"applicationDetails,omitempty"`
+	// cluster workload condition
 	// +optional
-	TraitCondition *metav1.Condition `json:"traitCondition,omitempty"`
+	Conditions []ApplicationCondition `json:"conditions,omitempty"`
+	// +optional
+	Type string `json:"type,omitempty"`
+}
+
+type ApplicationConditionType string
+
+const (
+	// ApplicationConditionTypePending indicates that the application controller successed to create or delete the workload or edge trait.
+	ApplicationConditionSuccessedScale ApplicationConditionType = "SuccessedScale"
+	// ApplicationConditionTypePending indicates that the application controller successed to update the workload or edge trait.
+	ApplicationConditionSuccessedUpdate ApplicationConditionType = "SuccessedUpdate"
+	// ApplicationConditionTypePending indicates that the application controller unexpected to create or delete the workload or edge trait.
+	ApplicationConditionUnexpectedScale ApplicationConditionType = "UnexpectedScale"
+	// ApplicationConditionUnexpectedUpdate indicates that the application controller unexpected to update the workload or edge trait.
+	ApplicationConditionUnexpectedUpdate ApplicationConditionType = "UnexpectedUpdate"
+)
+
+type ApplicationCondition struct {
+	// type of condition in CamelCase or in foo.example.com/CamelCase.
+	// ---
+	// Many .condition.type values are consistent across resources like Available, but because arbitrary conditions can be
+	// useful (see .node.status.conditions), the ability to deconflict is important.
+	// The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
+	// +required
+	// +kubebuilder:validation:Required
+	Type ApplicationConditionType `json:"type"`
+	// status of the condition, one of True, False, Unknown.
+	// +required
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Enum=True;False;Unknown
+	Status metav1.ConditionStatus `json:"status"`
+	// lastTransitionTime is the last time the condition transitioned from one status to another.
+	// This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+	// +required
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Type=string
+	// +kubebuilder:validation:Format=date-time
+	LastTransitionTime metav1.Time `json:"lastTransitionTime"`
+	// reason contains a programmatic identifier indicating the reason for the condition's last transition.
+	// Producers of specific condition types may define expected values and meanings for this field,
+	// and whether the values are considered a guaranteed API.
+	// The value should be a CamelCase string.
+	// This field may not be empty.
+	// +required
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MaxLength=1024
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:Pattern=`^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$`
+	Reason string `json:"reason"`
+	// message is a human readable message indicating details about the transition.
+	// This may be an empty string.
+	// +required
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MaxLength=32768
+	Message string `json:"message"`
 }
 
 // +genclient
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:shortName=app;apps,scope=Namespaced,categories=app;apps
-// +kubebuilder:printcolumn:name="WORKLOADTYPE",priority=0,type=string,JSONPath=`.status.workloadType`
+// +kubebuilder:printcolumn:name="WORKLOADTYPE",priority=0,type=string,JSONPath=`.status.type`
 // +kubebuilder:printcolumn:name="AREA",priority=0,type=string,JSONPath=`.spec.cloudArea`
 // +kubebuilder:printcolumn:name="REGION",priority=0,type=string,JSONPath=`.spec.regions[*]`
 // +kubebuilder:printcolumn:name="EVNIRONMENT",priority=0,type=string,JSONPath=`.spec.environment`
+// +kubebuilder:printcolumn:name="CLUSTER",priority=0,type=string,JSONPath=`.status.clusters[*]`
 // +kubebuilder:printcolumn:name="AGE",priority=0,type=date,JSONPath=`.metadata.creationTimestamp`
 
 // Application is the Schema for the applications API

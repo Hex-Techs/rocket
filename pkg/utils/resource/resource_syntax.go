@@ -2,9 +2,10 @@ package resouce
 
 import (
 	"fmt"
+	"os"
 	"regexp"
 
-	"k8s.io/klog/v2"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 // Gi, Mi, Ki supported 1Gi = 2^10Mi = 2^20Ki
@@ -23,11 +24,13 @@ var ResourceEngine *resourceEngine
 func init() {
 	cr, err := regexp.Compile(cpuRegexp)
 	if err != nil {
-		klog.Fatalf("init resource_syntax with error: %v", err)
+		log.Log.Error(err, "init resource_syntax")
+		os.Exit(1)
 	}
 	mr, err := regexp.Compile(memRegexp)
 	if err != nil {
-		klog.Fatalf("init resource_syntax with error: %v", err)
+		log.Log.Error(err, "init resource_syntax")
+		os.Exit(1)
 	}
 	ResourceEngine = &resourceEngine{
 		cr: cr,

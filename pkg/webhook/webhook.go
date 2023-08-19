@@ -5,7 +5,6 @@ import (
 )
 
 func InitWebhook(mgr manager.Manager) {
-	serveTemplate(mgr)
 	serveApplication(mgr)
 	servedistribution(mgr)
 }

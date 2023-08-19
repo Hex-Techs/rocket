@@ -26,12 +26,6 @@ func (a *ApplicationAnnotator) Handle(ctx context.Context, req admission.Request
 	if len(annoSet) == 0 {
 		annoSet = make(map[string]string)
 	}
-	// 将用到的template设置到annotation
-	tName := []string{}
-	for _, t := range app.Spec.Templates {
-		tName = append(tName, t.Name)
-	}
-	annoSet[constant.TemplateUsedLabel] = strings.Join(tName, ",")
 	// 将edge类型的trait kind设置到annotation中
 	et := []string{}
 	for _, c := range app.Spec.Traits {

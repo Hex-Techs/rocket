@@ -1,6 +1,14 @@
 package trait
 
-import "k8s.io/apimachinery/pkg/util/intstr"
+import (
+	"k8s.io/apimachinery/pkg/util/intstr"
+)
+
+// register trait
+func init() {
+	RegisterTrait(ServiceKind, NewServiceTrait())
+	RegisterTrait(PodUnavailableBudgetKind, NewPubTrait())
+}
 
 // pod 干扰预算配置
 type PodUnavailableBudget struct {

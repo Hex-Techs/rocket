@@ -39,14 +39,6 @@ func (c *FakeRocketV1alpha1) Distributions(namespace string) v1alpha1.Distributi
 	return &FakeDistributions{c, namespace}
 }
 
-func (c *FakeRocketV1alpha1) Templates(namespace string) v1alpha1.TemplateInterface {
-	return &FakeTemplates{c, namespace}
-}
-
-func (c *FakeRocketV1alpha1) Workloads(namespace string) v1alpha1.WorkloadInterface {
-	return &FakeWorkloads{c, namespace}
-}
-
 // RESTClient returns a RESTClient that is used to communicate
 // with API server by this client implementation.
 func (c *FakeRocketV1alpha1) RESTClient() rest.Interface {

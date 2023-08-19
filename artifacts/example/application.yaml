@@ -2,20 +2,27 @@ apiVersion: rocket.hextech.io/v1alpha1
 kind: Application
 metadata:
   name: test
-  namespace: sample
-  # annotations:
-  #   rocket.hextech.io/extended-resource: ""
 spec:
   regions:
     - beijing
   cloudArea: public
   environment: test
-  variables:
-    - name: ip
-      value: "2.2.2.2"
-  templates:
-    - name: sample
-      instanceName: app
-      parameterValues:
-        - name: testip
-          value: "[fromVariable(ip)]"
+  replicas: 2
+  template:
+    apiVersion: apps/v1
+    kind: Deployment
+    spec:
+      selector:
+        matchLabels:
+          app: nginx
+      template:
+        metadata:
+          labels:
+            app: nginx
+        spec:
+          containers:
+          - name: nginx
+            image: nginx:1.14.2
+            ports:
+            - containerPort: 80
+

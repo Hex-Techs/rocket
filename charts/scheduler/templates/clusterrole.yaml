@@ -22,7 +22,7 @@ rules:
 - apiGroups:
   - rocket.hextech.io
   resources:
-  - workloads
+  - applications
   verbs:
   - get
   - list
@@ -31,7 +31,7 @@ rules:
 - apiGroups:
   - rocket.hextech.io
   resources:
-  - workloads/status
+  - applications/status
   verbs:
   - list
   - watch

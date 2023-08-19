@@ -28,20 +28,15 @@ type ClusterSpec struct {
 	// +kubebuilder:validation:Required
 	ID string `json:"id,omitempty"`
 	// Region is the region of the cluster, e.g. beijing.
-	// Now, only support ap-beijing and ap-guangzhou.
+	// Now, only support beijing and guangzhou.
 	// +required
 	// +kubebuilder:validation:Required
 	Region string `json:"region,omitempty"`
-	// public or private
+	// the cloud area of the cluster, e.g. private or public.
 	// +required
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Enum=private;public
-	Area string `json:"area,omitempty"`
-	// prod, pre or test
-	// +required
-	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:Enum=dev;test;staging;prod
-	Environment string `json:"environment,omitempty"`
+	CloudArea string `json:"cloudArea,omitempty"`
 	// the cluster connect api server
 	// +optional
 	APIServer string `json:"apiServer,omitempty"`
@@ -98,9 +93,8 @@ type ClusterStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster
-// +kubebuilder:printcolumn:name="AREA",priority=0,type=string,JSONPath=`.spec.area`
+// +kubebuilder:printcolumn:name="CLOUDAREA",priority=0,type=string,JSONPath=`.spec.cloudArea`
 // +kubebuilder:printcolumn:name="REGION",priority=0,type=string,JSONPath=`.spec.region`
-// +kubebuilder:printcolumn:name="EVNIRONMENT",priority=0,type=string,JSONPath=`.spec.environment`
 // +kubebuilder:printcolumn:name="STATE",priority=0,type=string,JSONPath=`.status.state`
 // +kubebuilder:printcolumn:name="AGE",priority=0,type=date,JSONPath=`.metadata.creationTimestamp`
 

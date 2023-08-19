@@ -19,8 +19,8 @@ func GetResourceAndGvkFromDistribution(rd *rocketv1alpha1.Distribution) (*unstru
 		return nil, nil, err
 	}
 	res := ConvertToUnstructured(obj)
-	// NOTE: 为了避免资源的 namespace 与 distribution 的 namespace 不一致，这里需要将资源的 namespace 设置为 distribution 的 namespace
 	res.SetNamespace(rd.Namespace)
+	res.SetName(rd.Name)
 	// NOTE: 如果是 namespace 类型的资源，需要添加 delete-protection 的 label
 	if res.GetKind() == "Namespace" {
 		res.SetLabels(map[string]string{

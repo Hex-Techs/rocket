@@ -42,7 +42,8 @@ spec:
           - --health-probe-bind-address=:8081
           - --metrics-bind-address=127.0.0.1:8080
           - --leader-elect
-          - --v={{ .Values.logLevel | default 3 }}
+          - --zap-log-level={{ .Values.logLevel | default 3 }}
+          - --zap-encoder={{ .Values.logEncoder | default "console" }}
           - --disabled-webhook={{ .Values.disabledWebhook }}
           {{- if .Values.enabledControllers }}
           - --enabled-controllers={{ .Values.enabledControllers }}

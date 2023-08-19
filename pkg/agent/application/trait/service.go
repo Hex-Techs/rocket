@@ -51,21 +51,18 @@ func (*ServiceTrait) Generate(ttemp *rocketv1alpha1.Trait, obj interface{}) erro
 	return nil
 }
 
-func (st *ServiceTrait) Handler(ttemp *rocketv1alpha1.Trait, workload *rocketv1alpha1.Workload,
+func (st *ServiceTrait) Handler(ttemp *rocketv1alpha1.Trait, app *rocketv1alpha1.Application,
 	event EventType, client *Client) error {
-	name := workload.Name
-	namespace := workload.Namespace
-	if !workload.DeletionTimestamp.IsZero() || workload == nil {
-		if err := client.client.CoreV1().Services(namespace).Delete(context.TODO(), name, metav1.DeleteOptions{}); err != nil {
+	name := app.Name
+	namespace := app.Namespace
+	if !app.DeletionTimestamp.IsZero() || app == nil {
+		if err := client.Client.CoreV1().Services(namespace).Delete(context.TODO(), name, metav1.DeleteOptions{}); err != nil {
 			if !errors.IsNotFound(err) {
 				return err
 			}
 		}
 		return nil
 	}
-	// if workload.Spec.Template.CloneSetTemplate == nil && workload.Spec.Template.StatefulSetTemlate == nil {
-	// 	return fmt.Errorf("service trait only support CloneSet and StatefulSet")
-	// }
 	svc := &v1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -80,25 +77,25 @@ func (st *ServiceTrait) Handler(ttemp *rocketv1alpha1.Trait, workload *rocketv1a
 		return err
 	}
 	svc.Spec = *spec
-	old, err := client.client.CoreV1().Services(namespace).Get(context.TODO(), name, metav1.GetOptions{})
+	old, err := client.Client.CoreV1().Services(namespace).Get(context.TODO(), name, metav1.GetOptions{})
 	if err != nil {
 		if !errors.IsNotFound(err) {
 			return err
 		}
-		if event == Created {
-			_, err = client.client.CoreV1().Services(namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
+		if event == CreatedOrUpdate {
+			_, err = client.Client.CoreV1().Services(namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
 			return err
 		}
 	}
-	if event == Created {
+	if event == CreatedOrUpdate {
 		if !cmp.Equal(old.Spec, svc.Spec) || !cmp.Equal(old.Annotations, svc.Annotations) {
 			old.Spec = svc.Spec
-			_, err = client.client.CoreV1().Services(namespace).Update(context.TODO(), old, metav1.UpdateOptions{})
+			_, err = client.Client.CoreV1().Services(namespace).Update(context.TODO(), old, metav1.UpdateOptions{})
 			return err
 		}
 	}
 	if event == Deleted {
-		err = client.client.CoreV1().Services(namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
+		err = client.Client.CoreV1().Services(namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
 		if err != nil {
 			if !errors.IsNotFound(err) {
 				return err

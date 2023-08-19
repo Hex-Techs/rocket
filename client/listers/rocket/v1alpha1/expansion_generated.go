@@ -36,19 +36,3 @@ type DistributionListerExpansion interface{}
 // DistributionNamespaceListerExpansion allows custom methods to be added to
 // DistributionNamespaceLister.
 type DistributionNamespaceListerExpansion interface{}
-
-// TemplateListerExpansion allows custom methods to be added to
-// TemplateLister.
-type TemplateListerExpansion interface{}
-
-// TemplateNamespaceListerExpansion allows custom methods to be added to
-// TemplateNamespaceLister.
-type TemplateNamespaceListerExpansion interface{}
-
-// WorkloadListerExpansion allows custom methods to be added to
-// WorkloadLister.
-type WorkloadListerExpansion interface{}
-
-// WorkloadNamespaceListerExpansion allows custom methods to be added to
-// WorkloadNamespaceLister.
-type WorkloadNamespaceListerExpansion interface{}

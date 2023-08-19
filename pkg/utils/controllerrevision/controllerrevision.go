@@ -5,10 +5,10 @@ import (
 
 	"github.com/hex-techs/rocket/api/v1alpha1"
 	"github.com/hex-techs/rocket/pkg/utils/constant"
+	"github.com/hex-techs/rocket/pkg/utils/tools"
 	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/utils/pointer"
 )
 
 type AuthInfo struct {
@@ -44,7 +44,7 @@ func GenerateCR(cluster *v1alpha1.Cluster) *appsv1.ControllerRevision {
 					Kind:       "Cluster",
 					UID:        cluster.UID,
 					Name:       cluster.Name,
-					Controller: pointer.Bool(true),
+					Controller: tools.PtrBool(true),
 				},
 			},
 		},

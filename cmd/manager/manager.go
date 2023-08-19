@@ -29,10 +29,9 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
-	"k8s.io/klog/v2"
-	"k8s.io/klog/v2/klogr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 )
@@ -56,7 +55,6 @@ func main() {
 	var probeAddr string
 	var enabledControllers []string
 	var disabledWebhook bool
-	var enableScheduler bool
 	pflag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	pflag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	pflag.BoolVar(&enableLeaderElection, "leader-elect", false,
@@ -64,13 +62,12 @@ func main() {
 			"Enabling this will ensure there is only one active controller manager.")
 	pflag.BoolVar(&disabledWebhook, "disabled-webhook", false, "Disable webhook server.")
 	pflag.StringSliceVar(&enabledControllers, "enabled-controllers", []string{}, "The controller which will start.")
-	pflag.BoolVar(&enableScheduler, "enable-scheduler", true, "Whether to start the scheduler.")
 	pflag.IntVar(&param.TimeOut, "timeout", 360, "The heartbeet interval time, default: 360.")
-	klog.InitFlags(nil)
+	config.LogOpts.BindFlags(flag.CommandLine)
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 	pflag.Parse()
 
-	ctrl.SetLogger(klogr.New())
+	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&config.LogOpts)))
 	config.Set(param)
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{

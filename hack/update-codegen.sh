@@ -5,7 +5,7 @@ set -o nounset
 set -o pipefail
 
 SCRIPT_ROOT=$(dirname "${BASH_SOURCE[0]}")/..
-sed -i 's#// ##' ${SCRIPT_ROOT}/hack/tools.go
+# sed -i 's#// ##' ${SCRIPT_ROOT}/hack/tools.go
 go mod tidy
 go mod vendor
 CODEGEN_PKG=${CODEGEN_PKG:-$(cd "${SCRIPT_ROOT}"; ls -d -1 ./vendor/k8s.io/code-generator 2>/dev/null || echo ../code-generator)}
@@ -32,5 +32,5 @@ fi
 find client -type f -name "*.go" | xargs sed -i".out" -e "s#github.com/hex-techs/rocket/api/rocket/v1alpha1#github.com/hex-techs/rocket/api/v1alpha1#g"
 find client -type f -name "*go.out" | xargs rm -rf
 
-sed -i  's#import#// &#' ${SCRIPT_ROOT}/hack/tools.go
+# sed -i  's#import#// &#' ${SCRIPT_ROOT}/hack/tools.go
 rm -rf ${SCRIPT_ROOT}/vendor

@@ -11,7 +11,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -36,7 +35,7 @@ func NewReconciler(mgr manager.Manager) *ClusterReconciler {
 			}
 			time.Sleep(2 * time.Second)
 		}
-		klog.Info("start cluster registration")
+		log.V(0).Info("start cluster registration")
 		registerInstance.isClusterExist().
 			registerCluster(mgr).isClusterApproveOrNot(mgr).
 			syncAuthData(mgr).heartbeat(mgr)
@@ -57,7 +56,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	err := r.Get(ctx, types.NamespacedName{Name: req.Name}, node)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			klog.V(3).Infof("Node '%s' has been deleted.", req)
+			log.V(3).Info("Node has been deleted", "Node", req)
 		} else {
 			return ctrl.Result{}, err
 		}
@@ -108,7 +107,7 @@ func (r *ClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 func (r *ClusterReconciler) getNodeList(ctx context.Context) []v1.Node {
 	nodeList := v1.NodeList{}
 	if err := r.List(ctx, &nodeList); err != nil {
-		klog.Errorf("get node list with error: %v", err)
+		log.Error(err, "get node list with error")
 	}
 	return nodeList.Items
 }

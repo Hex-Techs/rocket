@@ -1,279 +1,269 @@
+/*
+Copyright2021.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package scheduler
 
 import (
 	"context"
-	"encoding/json"
-	"sort"
+	"strings"
+	"sync"
+	"time"
 
-	mapset "github.com/deckarep/golang-set/v2"
+	"github.com/google/go-cmp/cmp"
 	rocketv1alpha1 "github.com/hex-techs/rocket/api/v1alpha1"
-	"github.com/hex-techs/rocket/pkg/scheduler/schedule"
+	"github.com/hex-techs/rocket/pkg/scheduler/cache"
+	"github.com/hex-techs/rocket/pkg/utils/clustertools"
 	"github.com/hex-techs/rocket/pkg/utils/constant"
-	"github.com/hex-techs/rocket/pkg/utils/gvktools"
-	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
-	kruiseappsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
-	appsv1 "k8s.io/api/apps/v1"
-	batchv1 "k8s.io/api/batch/v1"
+	"github.com/hex-techs/rocket/pkg/utils/tools"
 	v1 "k8s.io/api/core/v1"
-	v1helper "k8s.io/component-helpers/scheduling/corev1"
-	"k8s.io/klog/v2"
+	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	kubeinformers "k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/workqueue"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
-const (
-	DefaultEnv  = "test"
-	DefaultArea = "public"
-)
+// 默认延迟时间
+const defaultDelay = 15 * time.Second
 
-type ClusterResult struct {
-	// 集群名称
-	Name string `json:"name,omitempty"`
-	// 调度分数，分数越高，越适合
-	Score int64 `json:"score,omitempty"`
-	// 集群的地域信息 eg: ap-beijing
-	Region string `json:"region,omitempty"`
-	// 集群的区域信息 eg: pub, ded
-	Area string `json:"area,omitempty"`
-	// 集群的环境信息 eg: tst, pre, pd
-	Env string `json:"env,omitempty"`
+// NewReconcile 返回一个新的 reconcile
+func NewReconcile(mgr manager.Manager) *SchedulerReconciler {
+	return &SchedulerReconciler{
+		Client:         mgr.GetClient(),
+		Scheme:         mgr.GetScheme(),
+		schedCache:     map[string]*clusterCache{},
+		snapshot:       map[string]*cache.Snapshot{},
+		stopEverything: map[string]chan struct{}{},
+		lock:           &sync.RWMutex{},
+		recoder:        mgr.GetEventRecorderFor("liuer-scheduler"),
+	}
 }
 
-func Scheduler(workload *rocketv1alpha1.Workload) []ClusterResult {
-	klog.V(4).Infof("Scheduler workload %s/%s", workload.Namespace, workload.Name)
-	var scoreMap = []ClusterResult{}
-	regions := mapset.NewSet[string]()
-	for i := range workload.Spec.Regions {
-		regions.Add(workload.Spec.Regions[i])
-	}
-	resource, gvk, err := gvktools.GetResourceAndGvkFromWorkload(workload)
+// SchedulerReconciler reconciles a Scheduler object
+type SchedulerReconciler struct {
+	client.Client
+	Scheme *runtime.Scheme
+
+	schedCache map[string]*clusterCache
+
+	snapshot map[string]*cache.Snapshot
+
+	lock *sync.RWMutex
+
+	stopEverything map[string]chan struct{}
+
+	recoder record.EventRecorder
+}
+
+//+kubebuilder:rbac:groups=liuer.yangshipin.com,resources=Schedulers,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=liuer.yangshipin.com,resources=Schedulers/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=liuer.yangshipin.com,resources=Schedulers/finalizers,verbs=update
+
+// For more details, check Reconcile and its Result here:
+// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.8.3/pkg/reconcile
+func (r *SchedulerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	log := log.FromContext(ctx)
+	application := &rocketv1alpha1.Application{}
+	err := r.Client.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: req.Name}, application)
 	if err != nil {
-		klog.Errorf("get resource and gvk from workload failed, err: %v", err)
-		return nil
-	}
-	if resource == nil {
-		klog.Errorf("get resource and gvk from workload failed, err: resource is nil")
-		return nil
-	}
-	gvr := gvktools.SetGVRForWorkload(gvk)
-	b, _ := json.Marshal(resource)
-	p := newPod(workload)
-	klog.V(4).Infof("Pod: %+v", p.Spec)
-	klog.V(4).Infof("Resource: %v", p.Spec.Containers[0].Resources)
-	ClientMap.Range(func(key, value interface{}) bool {
-		name := key.(string)
-		v := value.(*ClusterClient)
-		if !clusterTolerateFilter(v.Taint, workload.Spec.Tolerations) {
-			return true
+		if errors.IsNotFound(err) {
+			return reconcile.Result{}, nil
 		}
-		area, env := areaEnv(workload.Labels)
-		if !regions.Contains(v.Region) || v.Area != area || v.Env != env {
-			return true // continue
+		return ctrl.Result{}, err
+	}
+	obj := application.DeepCopy()
+	if obj.Status.Phase != "Scheduling" {
+		log.V(0).Info("application is not in scheduling phase", "application", tools.KObj(obj), "phase", obj.Status.Phase)
+		return reconcile.Result{}, nil
+	}
+	if r.doReconcile(ctx, obj) {
+		obj.Status.Phase = "Running"
+		if err := r.Status().Update(ctx, obj); err != nil {
+			return ctrl.Result{}, err
 		}
-		scoreMap = append(scoreMap, ClusterResult{
-			Name:   name,
-			Score:  0,
-			Region: v.Region,
-			Area:   string(v.Area),
-			Env:    string(v.Env),
-		})
-		for _, node := range v.Controller().List() {
-			if schedule.Filter(context.TODO(), p, node) {
-				// 为每一个符合要求的集群和节点计算分数
-				for idx, cluster := range scoreMap {
-					if cluster.Name == name {
-						scoreMap[idx].Score = scoreMap[idx].Score + schedule.Score(context.TODO(), p, node)
-					}
+	} else {
+		if obj.Status.Phase != "Running" {
+			// 延迟15s重新调度
+			return ctrl.Result{RequeueAfter: defaultDelay}, nil
+		}
+	}
+	return reconcile.Result{}, nil
+}
+
+func (r *SchedulerReconciler) doReconcile(ctx context.Context, application *rocketv1alpha1.Application) bool {
+	log := log.FromContext(context.Background())
+	schedulingCycleCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	r.recoder.Eventf(application, v1.EventTypeNormal, "Scheduling", "Start scheduling application %s/%s", application.Namespace, application.Name)
+	result := r.scheduler(schedulingCycleCtx, application)
+	if len(result) == 0 {
+		log.Error(nil, "unable to scheduler application", "application", tools.KObj(application))
+		r.recoder.Eventf(application, v1.EventTypeWarning, "SchedulerFailed",
+			"unable to scheduler application '%s/%s' because no cluster can be scheduled", application.Namespace, application.Name)
+		return false
+	}
+
+	// 已经调度的 application 保留其上一次调度的信息，如果上一次结果和本次相同，则不做更新，保留上次的结果
+	if len(application.Status.Clusters) != 0 {
+		if len(application.Annotations) == 0 {
+
+			application.Annotations = map[string]string{}
+		}
+		cs := strings.Join(application.Status.Clusters, ",")
+		if v, ok := application.Annotations[constant.LastSchedulerClusterAnnotation]; ok {
+			if v != cs {
+				application.Annotations[constant.LastSchedulerClusterAnnotation] = cs
+			}
+		} else {
+			application.Annotations[constant.LastSchedulerClusterAnnotation] = cs
+		}
+	}
+	// result already sorted by score, use the first one in application status
+	// NOTE: only one cluster can be scheduled
+	application.Status.Clusters = []string{result[0].Name}
+	log.V(3).Info("application was schedule sucessed", "application", tools.KObj(application), "cluster", application.Status.Clusters)
+	r.recoder.Eventf(application, v1.EventTypeNormal, "Scheduling",
+		"Application '%s/%s' was schedule sucessed in cluster '%v'", application.Namespace, application.Name, application.Status.Clusters)
+	return true
+}
+
+// SetupWithManager sets up the controller with the Manager.
+func (r *SchedulerReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	return ctrl.NewControllerManagedBy(mgr).
+		For(&rocketv1alpha1.Application{}, builder.WithPredicates(predicate.Funcs{
+			UpdateFunc: func(e event.UpdateEvent) bool {
+				new := e.ObjectNew.(*rocketv1alpha1.Application).DeepCopy()
+				return new.Status.Phase == "Scheduling"
+			},
+		})).
+		Watches(source.NewKindWithCache(&rocketv1alpha1.Cluster{}, mgr.GetCache()), handler.Funcs{
+			CreateFunc: func(e event.CreateEvent, q workqueue.RateLimitingInterface) {
+				obj := e.Object.(*rocketv1alpha1.Cluster).DeepCopy()
+				if obj.Status.State == rocketv1alpha1.Approve {
+					r.addCluster(obj)
 				}
-			}
-		}
-		return true
-	})
-	replicas := 1
-	switch gvr.Resource {
-	case "deployments":
-		deploy := &appsv1.Deployment{}
-		json.Unmarshal(b, deploy)
-		if deploy.Spec.Replicas != nil {
-			replicas = int(*deploy.Spec.Replicas)
-		}
-	case "clonesets":
-		clone := &kruiseappsv1alpha1.CloneSet{}
-		json.Unmarshal(b, clone)
-		if clone.Spec.Replicas != nil {
-			replicas = int(*clone.Spec.Replicas)
-		}
-	case "statefulsets":
-		if gvr.Group == "apps" {
-			sts := &appsv1.StatefulSet{}
-			json.Unmarshal(b, sts)
-			if sts.Spec.Replicas != nil {
-				replicas = int(*sts.Spec.Replicas)
-			}
-		}
-		if gvr.Group == "apps.kruise.io" {
-			sts := &kruiseappsv1beta1.StatefulSet{}
-			json.Unmarshal(b, sts)
-			if sts.Spec.Replicas != nil {
-				replicas = int(*sts.Spec.Replicas)
-			}
-		}
-	}
-	// 将不符合replicas要求的集群剔除
-	for idx, cluster := range scoreMap {
-		if cluster.Score < int64(replicas) {
-			if idx == len(scoreMap) {
-				scoreMap = scoreMap[:idx]
-			} else {
-				scoreMap = append(scoreMap[:idx], scoreMap[idx+1:]...)
-			}
-		}
-	}
-	s := sortResult{d: scoreMap}
-	sort.Sort(s)
-	return s.d
+			},
+			// cluter在创建时，一般状态为pending，需要等待审批通过后，才能创建client
+			UpdateFunc: func(ue event.UpdateEvent, q workqueue.RateLimitingInterface) {
+				new := ue.ObjectNew.(*rocketv1alpha1.Cluster).DeepCopy()
+				old := ue.ObjectOld.(*rocketv1alpha1.Cluster).DeepCopy()
+				if new.Status.State == rocketv1alpha1.Approve {
+					if !cmp.Equal(new.GetGeneration(), old.GetGeneration()) {
+						r.updateCluster(new)
+					}
+				} else {
+					r.removeCluster(new.Name)
+				}
+			},
+			DeleteFunc: func(e event.DeleteEvent, q workqueue.RateLimitingInterface) {
+				r.removeCluster(e.Object.GetName())
+			},
+		}).
+		Watches(source.NewKindWithCache(&rocketv1alpha1.Application{}, mgr.GetCache()), handler.Funcs{}).
+		WithOptions(controller.Options{}).Complete(r)
 }
-func newPod(workload *rocketv1alpha1.Workload) *v1.Pod {
-	pod := &v1.Pod{
-		Spec: v1.PodSpec{},
+
+func (r *SchedulerReconciler) addCluster(cluster *rocketv1alpha1.Cluster) {
+	log := log.FromContext(context.Background())
+	_, ok := r.schedCache[cluster.Name]
+	if ok {
+		log.V(3).Info("cluster is already exist", "clusterName", cluster.Name)
+		return
 	}
-	resource, gvk, err := gvktools.GetResourceAndGvkFromWorkload(workload)
+	kcli, err := generateClient(cluster)
 	if err != nil {
-		klog.Errorf("get resource and gvk from workload failed, err: %v", err)
-		return nil
+		log.Error(err, "unable to add cluster to scheduler", "clusterName", cluster.Name)
+		return
 	}
-	if resource == nil {
-		klog.Errorf("get resource and gvk from workload failed, err: resource is nil")
-		return nil
-	}
-	gvr := gvktools.SetGVRForWorkload(gvk)
-	b, _ := json.Marshal(resource)
-	switch gvr.Resource {
-	case "deployments":
-		deploy := &appsv1.Deployment{}
-		json.Unmarshal(b, deploy)
-		pod.Spec.Containers = deploy.Spec.Template.Spec.Containers
-		if deploy.Spec.Template.Spec.Tolerations != nil {
-			pod.Spec.Tolerations = deploy.Spec.Template.Spec.Tolerations
-		}
-		if deploy.Spec.Template.Spec.Affinity != nil {
-			pod.Spec.Affinity = deploy.Spec.Template.Spec.Affinity
-		}
-		if deploy.Spec.Template.Spec.InitContainers != nil {
-			pod.Spec.InitContainers = deploy.Spec.Template.Spec.InitContainers
-		}
-	case "clonesets":
-		clone := &kruiseappsv1alpha1.CloneSet{}
-		json.Unmarshal(b, clone)
-		pod.Spec.Containers = clone.Spec.Template.Spec.Containers
-		if clone.Spec.Template.Spec.Tolerations != nil {
-			pod.Spec.Tolerations = clone.Spec.Template.Spec.Tolerations
-		}
-		if clone.Spec.Template.Spec.Affinity != nil {
-			pod.Spec.Affinity = clone.Spec.Template.Spec.Affinity
-		}
-		if clone.Spec.Template.Spec.InitContainers != nil {
-			pod.Spec.InitContainers = clone.Spec.Template.Spec.InitContainers
-		}
-	case "statefulsets":
-		if gvr.Group == "apps" {
-			sts := &appsv1.StatefulSet{}
-			json.Unmarshal(b, sts)
-			pod.Spec.Containers = sts.Spec.Template.Spec.Containers
-			if sts.Spec.Template.Spec.Tolerations != nil {
-				pod.Spec.Tolerations = sts.Spec.Template.Spec.Tolerations
-			}
-			if sts.Spec.Template.Spec.Affinity != nil {
-				pod.Spec.Affinity = sts.Spec.Template.Spec.Affinity
-			}
-			if sts.Spec.Template.Spec.InitContainers != nil {
-				pod.Spec.InitContainers = sts.Spec.Template.Spec.InitContainers
-			}
-		}
-		if gvr.Group == "apps.kruise.io" {
-			sts := &kruiseappsv1beta1.StatefulSet{}
-			json.Unmarshal(b, sts)
-			pod.Spec.Containers = sts.Spec.Template.Spec.Containers
-			if sts.Spec.Template.Spec.Tolerations != nil {
-				pod.Spec.Tolerations = sts.Spec.Template.Spec.Tolerations
-			}
-			if sts.Spec.Template.Spec.Affinity != nil {
-				pod.Spec.Affinity = sts.Spec.Template.Spec.Affinity
-			}
-			if sts.Spec.Template.Spec.InitContainers != nil {
-				pod.Spec.InitContainers = sts.Spec.Template.Spec.InitContainers
-			}
-		}
-	case "cronjobs":
-		cronjob := &batchv1.CronJob{}
-		json.Unmarshal(b, cronjob)
-		pod.Spec.Containers = cronjob.Spec.JobTemplate.Spec.Template.Spec.Containers
-		if cronjob.Spec.JobTemplate.Spec.Template.Spec.Tolerations != nil {
-			pod.Spec.Tolerations = cronjob.Spec.JobTemplate.Spec.Template.Spec.Tolerations
-		}
-		if cronjob.Spec.JobTemplate.Spec.Template.Spec.Affinity != nil {
-			pod.Spec.Affinity = cronjob.Spec.JobTemplate.Spec.Template.Spec.Affinity
-		}
-		if cronjob.Spec.JobTemplate.Spec.Template.Spec.InitContainers != nil {
-			pod.Spec.InitContainers = cronjob.Spec.JobTemplate.Spec.Template.Spec.InitContainers
-		}
-	case "jobs":
-		job := &batchv1.Job{}
-		json.Unmarshal(b, job)
-		pod.Spec.Containers = job.Spec.Template.Spec.Containers
-		if job.Spec.Template.Spec.Tolerations != nil {
-			pod.Spec.Tolerations = job.Spec.Template.Spec.Tolerations
-		}
-		if job.Spec.Template.Spec.Affinity != nil {
-			pod.Spec.Affinity = job.Spec.Template.Spec.Affinity
-		}
-		if job.Spec.Template.Spec.InitContainers != nil {
-			pod.Spec.InitContainers = job.Spec.Template.Spec.InitContainers
-		}
-	}
-	return pod
+	log.V(0).Info("add cluster to scheduler cache", "clusterName", cluster.Name)
+	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(kcli, time.Second*120)
+	c := NewClusterCache(cluster, kcli, kubeInformerFactory.Core().V1().Nodes(), kubeInformerFactory.Core().V1().Pods())
+	r.snapshot[cluster.Name] = cache.NewEmptySnapshot()
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	r.schedCache[cluster.Name] = c
+	r.stopEverything[cluster.Name] = make(chan struct{})
+	kubeInformerFactory.Start(r.stopEverything[cluster.Name])
+	// go wait.Until(func() {
+	// 	for {
+	// 		time.Sleep(time.Second)
+	// 	}
+	// }, time.Second, stop)
 }
 
-// 集群污点与容忍
-func clusterTolerateFilter(taints []v1.Taint, tolerations []v1.Toleration) bool {
-	filterPredicate := func(t *v1.Taint) bool {
-		// PodToleratesNodeTaints is only interested in NoSchedule and NoExecute taints.
-		return t.Effect == v1.TaintEffectNoSchedule || t.Effect == v1.TaintEffectNoExecute
+func (r *SchedulerReconciler) updateCluster(cluster *rocketv1alpha1.Cluster) {
+	log := log.FromContext(context.Background())
+	_, ok := r.schedCache[cluster.Name]
+	if !ok {
+		log.V(3).Info("cluster is not exist", "clusterName", cluster.Name)
+		return
 	}
-	taint, isUntolerated := v1helper.FindMatchingUntoleratedTaint(taints, tolerations, filterPredicate)
-	if !isUntolerated {
-		return true
+	kcli, err := generateClient(cluster)
+	if err != nil {
+		log.Error(err, "ubable to update cluster to scheduler", "clusterName", cluster.Name)
+		return
 	}
-	klog.V(4).Infof("node(s) had taint {%s: %s}, that the workload didn't tolerate",
-		taint.Key, taint.Value)
-	return false
+	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(kcli, time.Second*120)
+	c := NewClusterCache(cluster, kcli, kubeInformerFactory.Core().V1().Nodes(), kubeInformerFactory.Core().V1().Pods())
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	delete(r.schedCache, cluster.Name)
+	delete(r.snapshot, cluster.Name)
+	close(r.stopEverything[cluster.Name])
+	delete(r.stopEverything, cluster.Name)
+
+	r.schedCache[cluster.Name] = c
+	r.snapshot[cluster.Name] = cache.NewEmptySnapshot()
+	r.stopEverything[cluster.Name] = make(chan struct{})
+	kubeInformerFactory.Start(r.stopEverything[cluster.Name])
 }
 
-func areaEnv(labels map[string]string) (area, env string) {
-	if a, ok := labels[constant.CloudAreaLabel]; !ok {
-		klog.V(3).Infof("unable to obtain area when scheduling workload, use default '%s'", DefaultArea)
-		area = DefaultArea
-	} else {
-		area = a
-	}
-	if e, ok := labels[constant.EnvLabel]; !ok {
-		klog.V(3).Infof("unable to obtain env when scheduling workload, use default '%s'", DefaultEnv)
-		env = DefaultEnv
-	} else {
-		env = e
-	}
-	return area, env
+func (r *SchedulerReconciler) removeCluster(name string) {
+	log := log.FromContext(context.Background())
+	log.V(3).Info("cluster is deleted", "clusterName", name)
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	// TODO: will close client
+	delete(r.schedCache, name)
+	delete(r.snapshot, name)
+	close(r.stopEverything[name])
+	delete(r.stopEverything, name)
 }
 
-type sortResult struct {
-	d []ClusterResult
-}
-
-func (s sortResult) Len() int {
-	return len(s.d)
-}
-func (s sortResult) Less(i, j int) bool {
-	// 降序排序
-	return s.d[i].Score > s.d[j].Score
-}
-func (s sortResult) Swap(i, j int) {
-	s.d[i], s.d[j] = s.d[j], s.d[i]
+func generateClient(cluster *rocketv1alpha1.Cluster) (kubernetes.Interface, error) {
+	config, err := clustertools.GenerateRestConfigFromCluster(cluster)
+	if err != nil {
+		return nil, err
+	}
+	kcli, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return nil, err
+	}
+	return kcli, nil
 }

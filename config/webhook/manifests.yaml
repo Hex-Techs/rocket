@@ -75,24 +75,3 @@ webhooks:
     resources:
     - distributions
   sideEffects: None
-- admissionReviewVersions:
-  - v1
-  - v1beta1
-  clientConfig:
-    service:
-      name: webhook-service
-      namespace: system
-      path: /validate-rocket-hextech-io-v1alpha1-template
-  failurePolicy: Fail
-  name: vtemplate.kb.io
-  rules:
-  - apiGroups:
-    - rocket.hextech.io
-    apiVersions:
-    - v1alpha1
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - templates
-  sideEffects: None

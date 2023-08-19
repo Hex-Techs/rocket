@@ -30,38 +30,33 @@ import (
 	informers "github.com/hex-techs/rocket/client/informers/externalversions/rocket/v1alpha1"
 	listers "github.com/hex-techs/rocket/client/listers/rocket/v1alpha1"
 	"github.com/hex-techs/rocket/pkg/agent/application/trait"
-	"github.com/hex-techs/rocket/pkg/utils/condition"
 	"github.com/hex-techs/rocket/pkg/utils/config"
 	"github.com/hex-techs/rocket/pkg/utils/constant"
+	"github.com/hex-techs/rocket/pkg/utils/gvktools"
+	"github.com/hex-techs/rocket/pkg/utils/tools"
 	kclientset "github.com/openkruise/kruise-api/client/clientset/versioned"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
-	"k8s.io/klog/v2"
 	"k8s.io/kubectl/pkg/scheme"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 const (
-	MessageResourceSynced = "edge trait synced successful"
-
-	EdgeTraitReadyType  = "EdgeTraitReady"
-	EdgeTraitDeleteType = "EdgeTraitDelete"
-
-	EdgeTraitFailed       = "EdgeTraitFailed"
-	EdgeTraitSynced       = "EdgeTraitSynced"
-	EdgeTraitWorkloadLoss = "WorkloadNotFound"
-	EdgeTraitDelete       = "EdgeTraitDelete"
-
 	retryTime = 30 * time.Second
 )
 
 // NewController returns a new application controller
 func NewController(
 	kubeclientset kubernetes.Interface,
+	dclientset dynamic.Interface,
 	kruiseclientset kclientset.Interface,
 	rocketclientset clientset.Interface,
 	appinformers informers.ApplicationInformer) *Controller {
@@ -72,28 +67,25 @@ func NewController(
 	utilruntime.Must(appcheme.AddToScheme(scheme.Scheme))
 
 	controller := &Controller{
-		kubeclientset:   kubeclientset,
-		rocketclientset: rocketclientset,
-		kruiseclientset: kruiseclientset,
-		appLister:       appinformers.Lister(),
-		appSynced:       appinformers.Informer().HasSynced,
-		workqueue:       workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "applications"),
+		kubeclientset:    kubeclientset,
+		dynamicclientset: dclientset,
+		rocketclientset:  rocketclientset,
+		kruiseclientset:  kruiseclientset,
+		appLister:        appinformers.Lister(),
+		appSynced:        appinformers.Informer().HasSynced,
+		workqueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "applications"),
 	}
 
-	klog.Info("Setting up event handlers")
+	log.Log.V(0).Info("Setting up event handlers")
 	// Set up an event handler for when resources change
 	appinformers.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: controller.enqueueApplication,
 		UpdateFunc: func(old, new interface{}) {
 			ot, nt := old.(*rocketv1alpha1.Application), new.(*rocketv1alpha1.Application)
 			otCopy, ntCopy := ot.DeepCopy(), nt.DeepCopy()
-			if !cmp.Equal(otCopy.ObjectMeta, ntCopy.ObjectMeta) ||
-				!cmp.Equal(otCopy.Spec, ntCopy.Spec) {
-				controller.enqueueApplication(new)
-				return
-			}
-			ntCopy.Status.TraitCondition = &metav1.Condition{}
-			if !cmp.Equal(otCopy.Status, ntCopy.Status) {
+			if !cmp.Equal(otCopy.GetGeneration(), ntCopy.GetGeneration()) ||
+				!cmp.Equal(otCopy.GetDeletionTimestamp(), ntCopy.GetDeletionTimestamp()) ||
+				!cmp.Equal(otCopy.Status.Clusters, ntCopy.Status.Clusters) {
 				controller.enqueueApplication(new)
 			}
 		},
@@ -106,6 +98,8 @@ func NewController(
 type Controller struct {
 	// 当前集群的 clientset
 	kubeclientset kubernetes.Interface
+	// 当前集群的 clientset
+	dynamicclientset dynamic.Interface
 	// 管理集群的 clientset，当发现管理端的 application 资源变化时，触发本集群的修改
 	rocketclientset clientset.Interface
 	// 当前集群 open kruise 的 clientset
@@ -130,23 +124,24 @@ type Controller struct {
 // is closed, at which point it will shutdown the workqueue and wait for
 // workers to finish processing their current work items.
 func (c *Controller) Run(workers int, stopCh <-chan struct{}) error {
+	log := log.FromContext(context.Background())
 	defer utilruntime.HandleCrash()
 	defer c.workqueue.ShutDown()
 	// Start the informer factories to begin populating the informer caches
-	klog.Info("Starting Application controller")
+	log.V(0).Info("Starting Application controller")
 	// Wait for the caches to be synced before starting workers
-	klog.Info("Waiting for informer caches to sync")
+	log.V(0).Info("Waiting for informer caches to sync")
 	if ok := cache.WaitForCacheSync(stopCh, c.appSynced); !ok {
 		return fmt.Errorf("failed to wait for caches to sync")
 	}
-	klog.Info("Starting application workers")
+	log.V(0).Info("Starting application workers")
 	// Launch two workers to process Workload resources
 	for i := 0; i < workers; i++ {
 		go wait.Until(c.runWorker, time.Second, stopCh)
 	}
-	klog.Info("Started application workers")
+	log.V(0).Info("Started application workers")
 	<-stopCh
-	klog.Info("Shutting down application workers")
+	log.V(0).Info("Shutting down application workers")
 	return nil
 }
 
@@ -199,7 +194,7 @@ func (c *Controller) processNextWorkItem() bool {
 		// Finally, if no error occurs we Forget this item so it does not
 		// get queued again until another change happens.
 		c.workqueue.Forget(obj)
-		klog.Infof("Successfully synced application '%s'", key)
+		log.Log.V(0).Info("Successfully synced application", "application", key)
 		return nil
 	}(obj)
 	if err != nil {
@@ -213,6 +208,7 @@ func (c *Controller) processNextWorkItem() bool {
 // converge the two. It then updates the Status block of the Workload resource
 // with the current status of the resource.
 func (c *Controller) syncHandler(key string) error {
+	log := log.FromContext(context.Background())
 	// Convert the namespace/name string into a distinct namespace and name
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
@@ -230,135 +226,212 @@ func (c *Controller) syncHandler(key string) error {
 		}
 		return err
 	}
-	// 判断 application 对应的 workload 是否属于当前集群，以及 workload 是否存在
-	workload, err := c.getWorkload(application.Namespace, application.Name)
-	if workload == nil {
-		workload = &rocketv1alpha1.Workload{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:              application.Name,
-				DeletionTimestamp: application.DeletionTimestamp,
-			},
+	// application is in current cluster or not
+	if !c.isAppInCurrentCluster(application.Status.Clusters) {
+		return nil
+	}
+	resource, gvk, err := gvktools.GetResourceAndGvkFromApplication(application)
+	if err != nil {
+		return err
+	}
+	if resource == nil {
+		return fmt.Errorf("resource template is nil")
+	}
+	gvr := gvktools.SetGVRForApplication(gvk)
+	if !application.DeletionTimestamp.IsZero() {
+		// if application is deleting, delete all resources
+		err = c.deleteTrait(application.Spec.Traits, application)
+		c.applicationConditionsUpdate(application, metav1.ConditionTrue, constant.ReasonTraitDeleted, constant.MessageTraitDeleted)
+		if err != nil {
+			c.applicationConditionsUpdate(application, metav1.ConditionFalse, constant.ReasonTraitDeleted, err.Error())
+			log.Error(err, "delete trait failed", "workload", tools.KObj(resource), "application", tools.KObj(application))
+		}
+		err = c.deleteWorkload(application.Namespace, application.Name, gvr)
+		c.applicationConditionsScale(application, metav1.ConditionTrue, c.getReason(gvr, false), constant.MessageApplicationDeleted)
+		if err != nil {
+			c.applicationConditionsScale(application, metav1.ConditionFalse, c.getReason(gvr, false), err.Error())
+			log.Error(err, "delete resource failed", "workload", tools.KObj(resource), "application", tools.KObj(application))
+		}
+		return c.updateApplicationStatus(application)
+	}
+	old, err := c.dynamicclientset.Resource(gvr).Namespace(application.Namespace).Get(context.TODO(), application.Name, metav1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			log.V(0).Info("resource is not found, create it", "workload", tools.KObj(resource), "application", tools.KObj(application))
+			if gvr.Resource == "deployments" || gvr.Resource == "clonesets" {
+				if err := unstructured.SetNestedField(resource.Object, *application.Spec.Replicas, "spec", "replicas"); err != nil {
+					return fmt.Errorf("set replicas error: %v", err)
+				}
+			}
+			_, err = c.dynamicclientset.Resource(gvr).Namespace(resource.GetNamespace()).Create(context.TODO(), resource, metav1.CreateOptions{})
+			c.applicationConditionsScale(application, metav1.ConditionTrue, c.getReason(gvr, true), constant.MessageApplicationSynced)
+			if err != nil {
+				c.applicationConditionsScale(application, metav1.ConditionFalse, c.getReason(gvr, true), err.Error())
+				log.Error(err, "create resource failed", "workload", tools.KObj(resource), "application", tools.KObj(application))
+			}
+			err = c.handleTrait(application)
+			c.applicationConditionsUpdate(application, metav1.ConditionTrue, constant.ReasonTraitSynced, constant.MessageTraitSynced)
+			if err != nil {
+				c.applicationConditionsUpdate(application, metav1.ConditionFalse, constant.ReasonTraitSynced, err.Error())
+				log.Error(err, "handle trait failed", "workload", tools.KObj(resource), "application", tools.KObj(application))
+			}
+			application.Status.Type = gvr.Resource
+			return c.updateApplicationStatus(application)
+		}
+		return err
+	}
+	if gvktools.NeedToUpdate(old, resource) {
+		if err := c.setWorkload(old, resource); err != nil {
+			return err
+		}
+		if gvr.Resource == "deployments" || gvr.Resource == "clonesets" {
+			if err := unstructured.SetNestedField(old.Object, *application.Spec.Replicas, "spec", "replicas"); err != nil {
+				return fmt.Errorf("set replicas error: %v", err)
+			}
+		}
+		_, err = c.dynamicclientset.Resource(gvr).Namespace(resource.GetNamespace()).Update(context.TODO(), old, metav1.UpdateOptions{})
+		c.applicationConditionsScale(application, metav1.ConditionTrue, c.getReason(gvr, true), constant.MessageApplicationSynced)
+		if err != nil {
+			c.applicationConditionsScale(application, metav1.ConditionFalse, c.getReason(gvr, true), err.Error())
+			log.Error(err, "update resource failed", "workload", tools.KObj(resource), "application", tools.KObj(application))
+		}
+		err = c.handleTrait(application)
+		c.applicationConditionsUpdate(application, metav1.ConditionTrue, constant.ReasonTraitSynced, constant.MessageTraitSynced)
+		if err != nil {
+			c.applicationConditionsUpdate(application, metav1.ConditionFalse, constant.ReasonTraitSynced, err.Error())
+			log.Error(err, "handle trait failed", "workload", tools.KObj(resource), "application", tools.KObj(application))
 		}
 	}
-	if err != nil {
-		if errors.IsNotFound(err) && !application.DeletionTimestamp.IsZero() {
-			// 如果 workload 被删除了，但是 application 还没有被删除，会删除创建的资源并标记 application
-			err = c.handleDelete(application.Name, application.Spec.Traits, workload, application)
-			if err != nil {
-				return err
-			}
-			// 无法判断 workload 是否属于当前集群，直接返回
-			return nil
+	log.V(0).Info("origin data", "new application", resource)
+	log.V(0).Info("origin data", "old application", old)
+	return c.updateApplicationStatus(application)
+}
+
+func (c *Controller) isAppInCurrentCluster(clusters []string) bool {
+	set := mapset.NewSet[string]()
+	if len(clusters) == 0 {
+		return false
+	} else {
+		for _, c := range clusters {
+			set.Add(c)
 		}
+	}
+	if !set.Contains(config.Pread().Name) {
+		return false
+	}
+	return true
+}
+
+func (c *Controller) setWorkload(old, resource *unstructured.Unstructured) error {
+	// 1. set labels
+	newlables, _, _ := unstructured.NestedFieldCopy(resource.Object, "metadata", "labels")
+	if err := unstructured.SetNestedField(old.Object, newlables, "metadata", "labels"); err != nil {
+		return fmt.Errorf("set labels error: %v", err)
+	}
+	// 2. set spec
+	newspec, _, _ := unstructured.NestedFieldCopy(resource.Object, "spec")
+	if err := unstructured.SetNestedField(old.Object, newspec, "spec"); err != nil {
+		return fmt.Errorf("set spec error: %v", err)
+	}
+	return nil
+}
+
+func (c *Controller) deleteWorkload(namespace, name string, res schema.GroupVersionResource) error {
+	if err := c.dynamicclientset.Resource(res).Namespace(namespace).Delete(context.TODO(), name, metav1.DeleteOptions{}); err != nil {
 		if !errors.IsNotFound(err) {
 			return err
 		}
 	}
-	// 判断是否属于当前集群
-	if application.DeletionTimestamp.IsZero() && workload != nil {
-		set := mapset.NewSet[string]()
-		if len(workload.Status.Clusters) == 0 {
-			return nil
-		} else {
-			for _, c := range workload.Status.Clusters {
-				set.Add(c)
-			}
-		}
-		if !set.Contains(config.Pread().Name) {
-			klog.V(4).Infof("workload '%s' not contain current cluster(%s), skip application '%s'",
-				workload.Name, config.Pread().Name, name)
-			return nil
-		}
-	}
-	if !application.DeletionTimestamp.IsZero() {
-		err = c.handleDelete(application.Name, application.Spec.Traits, workload, application)
-		if err != nil {
-			return err
-		}
-		et := condition.GenerateCondition(EdgeTraitDeleteType, EdgeTraitDelete,
-			"synced", metav1.ConditionTrue)
-		application.Status.TraitCondition = &et
-	} else {
-		old := c.getOldTrait(application.Annotations)
-		new := c.getNewTrait(application.Spec.Traits)
-		// 获取到需要删除的trait
-		removeStr := []string{}
-		old.Difference(new).Each(func(s string) bool {
-			removeStr = append(removeStr, s)
-			return false
-		})
-		klog.V(4).Infof("application '%s' need remove trait: %v", application.Name, removeStr)
-		remove := generateRemoveTrait(removeStr)
-		if err := c.handleDelete(application.Name, remove, workload, application); err != nil {
-			return err
-		}
-		newcondition := metav1.Condition{}
-		if err := c.handleApplication(application, workload); err != nil {
-			newcondition = condition.GenerateCondition(EdgeTraitReadyType, EdgeTraitFailed,
-				err.Error(), metav1.ConditionFalse)
-			application.Status.TraitCondition = &newcondition
-			c.workqueue.AddAfter(name, retryTime) // 加入队列重新处理
-		} else {
-			newcondition = condition.GenerateCondition(EdgeTraitReadyType, EdgeTraitSynced,
-				MessageResourceSynced, metav1.ConditionTrue)
-			application.Status.TraitCondition = &newcondition
-		}
-	}
-	return c.updateApplicationStatus(application)
-}
-
-func (c *Controller) getWorkload(namespace, appName string) (*rocketv1alpha1.Workload, error) {
-	return c.rocketclientset.RocketV1alpha1().Workloads(namespace).Get(context.TODO(), appName, metav1.GetOptions{})
-}
-
-func (c *Controller) handleApplication(application *rocketv1alpha1.Application, workload *rocketv1alpha1.Workload) error {
-	for _, t := range application.Spec.Traits {
-		if opt, ok := trait.Traits[t.Kind]; ok {
-			client := trait.NewClient(c.kruiseclientset, c.rocketclientset, c.kubeclientset)
-			if err := opt.Handler(&t, workload, trait.Created, client); err != nil {
-				return err
-			}
-		}
-	}
 	return nil
 }
 
-func (c *Controller) handleDelete(tname string, ttmp []rocketv1alpha1.Trait,
-	workload *rocketv1alpha1.Workload, application *rocketv1alpha1.Application) error {
-	for _, t := range ttmp {
-		if opt, ok := trait.Traits[t.Kind]; ok {
-			client := trait.NewClient(c.kruiseclientset, c.rocketclientset, c.kubeclientset)
-			if err := opt.Handler(&t, workload, trait.Deleted, client); err != nil {
-				return err
-			}
+func (c *Controller) getReason(res schema.GroupVersionResource, e bool) string {
+	switch res.Resource {
+	case "deployments":
+		if e {
+			return constant.DeploymentCreated
 		}
+		return constant.DeploymentDeleted
+	case "clonesets":
+		if e {
+			return constant.CloneSetCreated
+		}
+		return constant.CloneSetDeleted
+	case "cronjobs":
+		if e {
+			return constant.CronJobCreated
+		}
+		return constant.CronJobDeleted
 	}
-	return nil
+	return ""
 }
 
-func (c *Controller) getOldTrait(anno map[string]string) mapset.Set[string] {
-	if anno == nil {
-		return mapset.NewSet[string]()
-	}
-	if v, ok := anno[constant.TraitEdgeAnnotation]; !ok {
-		return mapset.NewSet[string]()
-	} else {
-		set := mapset.NewSet[string]()
-		for _, s := range strings.Split(v, ",") {
-			set.Add(s)
+func (c *Controller) applicationConditionsScale(application *rocketv1alpha1.Application, status metav1.ConditionStatus, reason, message string) {
+	if len(application.Status.Conditions) == 0 {
+		application.Status.Conditions = []rocketv1alpha1.ApplicationCondition{
+			{
+				Type:               rocketv1alpha1.ApplicationConditionSuccessedScale,
+				Status:             status,
+				LastTransitionTime: metav1.Now(),
+				Reason:             reason,
+				Message:            message,
+			},
 		}
-		return set
+		return
+	}
+	for i, c := range application.Status.Conditions {
+		if c.Type == rocketv1alpha1.ApplicationConditionSuccessedScale {
+			application.Status.Conditions[i].Status = status
+			application.Status.Conditions[i].LastTransitionTime = metav1.Now()
+			application.Status.Conditions[i].Reason = reason
+			application.Status.Conditions[i].Message = message
+			return
+		}
+		if i == len(application.Status.Conditions)-1 {
+			application.Status.Conditions = append(application.Status.Conditions, rocketv1alpha1.ApplicationCondition{
+				Type:               rocketv1alpha1.ApplicationConditionSuccessedScale,
+				Status:             status,
+				LastTransitionTime: metav1.Now(),
+				Reason:             reason,
+				Message:            message,
+			})
+			return
+		}
 	}
 }
 
-func (c *Controller) getNewTrait(traits []rocketv1alpha1.Trait) mapset.Set[string] {
-	set := mapset.NewSet[string]()
-	for _, t := range traits {
-		if _, ok := trait.Traits[t.Kind]; ok {
-			set.Add(t.Kind)
+func (c *Controller) applicationConditionsUpdate(application *rocketv1alpha1.Application, status metav1.ConditionStatus, reason, message string) {
+	if len(application.Status.Conditions) == 0 {
+		application.Status.Conditions = []rocketv1alpha1.ApplicationCondition{
+			{
+				Type:               rocketv1alpha1.ApplicationConditionSuccessedUpdate,
+				Status:             status,
+				LastTransitionTime: metav1.Now(),
+				Reason:             reason,
+				Message:            message,
+			},
+		}
+		return
+	}
+	for i, c := range application.Status.Conditions {
+		if c.Type == rocketv1alpha1.ApplicationConditionSuccessedUpdate {
+			application.Status.Conditions[i].Status = status
+			application.Status.Conditions[i].LastTransitionTime = metav1.Now()
+			application.Status.Conditions[i].Reason = reason
+			application.Status.Conditions[i].Message = message
+			return
+		}
+		if i == len(application.Status.Conditions)-1 {
+			application.Status.Conditions = append(application.Status.Conditions, rocketv1alpha1.ApplicationCondition{
+				Type:               rocketv1alpha1.ApplicationConditionSuccessedUpdate,
+				Status:             status,
+				LastTransitionTime: metav1.Now(),
+				Reason:             reason,
+				Message:            message,
+			})
+			return
 		}
 	}
-	return set
 }
 
 func (c *Controller) updateApplicationStatus(application *rocketv1alpha1.Application) error {
@@ -387,6 +460,31 @@ func (c *Controller) enqueueApplication(obj interface{}) {
 	c.workqueue.Add(key)
 }
 
+func (c *Controller) getOldTrait(anno map[string]string) mapset.Set[string] {
+	if anno == nil {
+		return mapset.NewSet[string]()
+	}
+	if v, ok := anno[constant.TraitEdgeAnnotation]; !ok {
+		return mapset.NewSet[string]()
+	} else {
+		set := mapset.NewSet[string]()
+		for _, s := range strings.Split(v, ",") {
+			set.Add(s)
+		}
+		return set
+	}
+}
+
+func (c *Controller) getNewTrait(traits []rocketv1alpha1.Trait) mapset.Set[string] {
+	set := mapset.NewSet[string]()
+	for _, t := range traits {
+		if _, ok := trait.Traits[t.Kind]; ok {
+			set.Add(t.Kind)
+		}
+	}
+	return set
+}
+
 func generateRemoveTrait(t []string) []rocketv1alpha1.Trait {
 	traits := []rocketv1alpha1.Trait{}
 	for _, v := range t {
@@ -396,4 +494,48 @@ func generateRemoveTrait(t []string) []rocketv1alpha1.Trait {
 		}
 	}
 	return traits
+}
+
+func (c *Controller) handleTrait(app *rocketv1alpha1.Application) error {
+	old := c.getOldTrait(app.Annotations)
+	new := c.getNewTrait(app.Spec.Traits)
+	removeStr := []string{}
+	old.Difference(new).Each(func(s string) bool {
+		removeStr = append(removeStr, s)
+		return false
+	})
+	remove := generateRemoveTrait(removeStr)
+	if err := c.deleteTrait(remove, app); err != nil {
+		return err
+	}
+	addStr := []string{}
+	new.Difference(old).Each(func(s string) bool {
+		addStr = append(addStr, s)
+		return false
+	})
+	return c.createOrUpdateTrait(app.Spec.Traits, app)
+}
+
+func (c *Controller) deleteTrait(ttmp []rocketv1alpha1.Trait, app *rocketv1alpha1.Application) error {
+	for _, t := range ttmp {
+		if opt, ok := trait.Traits[t.Kind]; ok {
+			client := trait.NewClient(c.kruiseclientset, c.rocketclientset, c.kubeclientset)
+			if err := opt.Handler(&t, app, trait.Deleted, client); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (c *Controller) createOrUpdateTrait(ttmp []rocketv1alpha1.Trait, app *rocketv1alpha1.Application) error {
+	for _, t := range ttmp {
+		if opt, ok := trait.Traits[t.Kind]; ok {
+			client := trait.NewClient(c.kruiseclientset, c.rocketclientset, c.kubeclientset)
+			if err := opt.Handler(&t, app, trait.CreatedOrUpdate, client); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

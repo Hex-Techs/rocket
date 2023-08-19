@@ -16,14 +16,11 @@ spec:
   scope: Cluster
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .spec.area
-      name: AREA
+    - jsonPath: .spec.cloudArea
+      name: CLOUDAREA
       type: string
     - jsonPath: .spec.region
       name: REGION
-      type: string
-    - jsonPath: .spec.environment
-      name: EVNIRONMENT
       type: string
     - jsonPath: .status.state
       name: STATE
@@ -54,25 +51,17 @@ spec:
               apiServer:
                 description: the cluster connect api server
                 type: string
-              area:
-                description: public or private
-                enum:
-                - private
-                - public
-                type: string
               caData:
                 format: byte
                 type: string
               certData:
                 format: byte
                 type: string
-              environment:
-                description: prod, pre or test
+              cloudArea:
+                description: the cloud area of the cluster, e.g. private or public.
                 enum:
-                - dev
-                - test
-                - staging
-                - prod
+                - private
+                - public
                 type: string
               id:
                 description: ID is the uid for this cluster.
@@ -82,7 +71,7 @@ spec:
                 type: string
               region:
                 description: Region is the region of the cluster, e.g. beijing. Now,
-                  only support ap-beijing and ap-guangzhou.
+                  only support beijing and guangzhou.
                 type: string
               taints:
                 description: Taints is the taint of the cluster

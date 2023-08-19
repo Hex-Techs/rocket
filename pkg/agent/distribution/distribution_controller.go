@@ -25,8 +25,8 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
-	"k8s.io/klog/v2"
 	"k8s.io/kubectl/pkg/scheme"
+	ctrlLog "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 const (
@@ -46,6 +46,8 @@ const (
 	ResourceDeleteMessage = "Resource is deleted"
 )
 
+var log = ctrlLog.FromContext(context.Background())
+
 // NewController returns a new trait controller
 func NewController(
 	kubeclientset dynamic.Interface,
@@ -58,14 +60,13 @@ func NewController(
 
 	controller := &Controller{
 		kubeclientset:   kubeclientset,
-		discoveryClient: discoveryClient,
 		rocketclientset: rocketclientset,
 		rdsLister:       rdsinformers.Lister(),
 		rdsSynced:       rdsinformers.Informer().HasSynced,
 		workqueue:       workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "distributions"),
 	}
 
-	klog.Info("Setting up event handlers")
+	log.V(0).Info("Setting up event handlers")
 	// Set up an event handler for when resources change
 	rdsinformers.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: controller.enqueuedistribution,
@@ -114,22 +115,22 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) error {
 	defer c.workqueue.ShutDown()
 
 	// Start the informer factories to begin populating the informer caches
-	klog.Info("Starting distribution controller")
+	log.V(0).Info("Starting distribution controller")
 
 	// Wait for the caches to be synced before starting workers
-	klog.Info("Waiting for informer caches to sync")
+	log.V(0).Info("Waiting for informer caches to sync")
 	if ok := cache.WaitForCacheSync(stopCh, c.rdsSynced); !ok {
 		return fmt.Errorf("failed to wait for caches to sync")
 	}
 
-	klog.Info("Starting distribution workers")
+	log.V(0).Info("Starting distribution workers")
 	// Launch two workers to process distribution resources
 	for i := 0; i < workers; i++ {
 		go wait.Until(c.runWorker, time.Second, stopCh)
 	}
-	klog.Info("Started distribution workers")
+	log.V(0).Info("Started distribution workers")
 	<-stopCh
-	klog.Info("Shutting down distribution workers")
+	log.V(0).Info("Shutting down distribution workers")
 
 	return nil
 }
@@ -185,7 +186,7 @@ func (c *Controller) processNextWorkItem() bool {
 		// Finally, if no error occurs we Forget this item so it does not
 		// get queued again until another change happens.
 		c.workqueue.Forget(obj)
-		klog.Infof("Successfully synced distribution '%s'", key)
+		log.V(0).Info("Successfully synced distribution", "distribution", key)
 		return nil
 	}(obj)
 
@@ -251,7 +252,7 @@ func (c *Controller) syncHandler(key string) error {
 				} else {
 					rd.Status.Conditions = c.condition(rd.Status.Conditions, metav1.ConditionTrue, ResourceDeleteReason, ResourceDeleteMessage)
 				}
-				klog.V(4).Infof("delete resource %s/%s is match current cluster", resource.GetNamespace(), resource.GetName())
+				log.V(4).Info("delete resource is match current cluster", "resourcedistribution", tools.KObj(resource))
 				n := rd.Status.Conditions[config.Pread().Name]
 				if !c.equalCondition(oldCond, &n) {
 					return c.updatedistributionStatus(rd)
@@ -303,7 +304,7 @@ func (c *Controller) syncHandler(key string) error {
 				} else {
 					rd.Status.Conditions = c.condition(rd.Status.Conditions, metav1.ConditionTrue, ResourceDeleteReason, ResourceDeleteMessage)
 				}
-				klog.V(4).Infof("delete resource %s/%s is not match current cluster", resource.GetNamespace(), resource.GetName())
+				log.V(4).Info("delete resource is not match current cluster", "resourcedistribution", tools.KObj(resource))
 				n := rd.Status.Conditions[config.Pread().Name]
 				if !c.equalCondition(oldCond, &n) {
 					return c.updatedistributionStatus(rd)
@@ -402,7 +403,6 @@ func (c *Controller) equalCondition(old, new *rocketv1alpha1.DistributionConditi
 	}
 	old.LastTransitionTime = metav1.Time{}
 	new.LastTransitionTime = metav1.Time{}
-	klog.V(3).Infof("old condition is %v, new condition is %v", old, new)
 	return cmp.Equal(old, new)
 }
 

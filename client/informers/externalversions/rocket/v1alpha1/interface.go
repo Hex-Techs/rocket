@@ -29,10 +29,6 @@ type Interface interface {
 	Clusters() ClusterInformer
 	// Distributions returns a DistributionInformer.
 	Distributions() DistributionInformer
-	// Templates returns a TemplateInformer.
-	Templates() TemplateInformer
-	// Workloads returns a WorkloadInformer.
-	Workloads() WorkloadInformer
 }
 
 type version struct {
@@ -59,14 +55,4 @@ func (v *version) Clusters() ClusterInformer {
 // Distributions returns a DistributionInformer.
 func (v *version) Distributions() DistributionInformer {
 	return &distributionInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
-}
-
-// Templates returns a TemplateInformer.
-func (v *version) Templates() TemplateInformer {
-	return &templateInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
-}
-
-// Workloads returns a WorkloadInformer.
-func (v *version) Workloads() WorkloadInformer {
-	return &workloadInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }

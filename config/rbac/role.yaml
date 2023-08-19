@@ -6,6 +6,32 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
+  - liuer.yangshipin.com
+  resources:
+  - Schedulers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - liuer.yangshipin.com
+  resources:
+  - Schedulers/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - liuer.yangshipin.com
+  resources:
+  - Schedulers/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
   - rocket.hextech.io
   resources:
   - applications
@@ -79,32 +105,6 @@ rules:
   - rocket.hextech.io
   resources:
   - distributions/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - rocket.hextech.io
-  resources:
-  - templates
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - rocket.hextech.io
-  resources:
-  - templates/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - rocket.hextech.io
-  resources:
-  - templates/status
   verbs:
   - get
   - patch

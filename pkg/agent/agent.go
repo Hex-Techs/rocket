@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -13,7 +14,6 @@ import (
 	"github.com/hex-techs/rocket/pkg/agent/cronjob"
 	"github.com/hex-techs/rocket/pkg/agent/deployment"
 	"github.com/hex-techs/rocket/pkg/agent/distribution"
-	"github.com/hex-techs/rocket/pkg/agent/workload"
 	"github.com/hex-techs/rocket/pkg/utils/clustertools"
 	"github.com/hex-techs/rocket/pkg/utils/config"
 	"github.com/hex-techs/rocket/pkg/utils/signals"
@@ -23,11 +23,13 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	"k8s.io/klog/v2"
+	ctrlLog "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 )
 
 const ErrTemplateSchemeNotSupported = "scheme %s is not supported yet"
+
+var log = ctrlLog.FromContext(context.Background())
 
 type ReconcilerSetupFunc func(manager manager.Manager) error
 
@@ -47,7 +49,7 @@ var supportedSchemeReconciler = map[string]ReconcilerSetupFunc{
 }
 
 func InitReconcilers(mgr manager.Manager, enables []string) error {
-	klog.V(4).Infof("enable controllers: %v", enables)
+	log.V(4).Info("enable controllers", "name", enables)
 	for _, enable := range enables {
 		if m, support := supportedSchemeReconciler[enable]; support {
 			if err := m(mgr); err != nil {
@@ -65,7 +67,7 @@ func RemoteController(mgr manager.Manager) error {
 		if cluster.State == string(rocketv1alpha1.Approve) {
 			break
 		} else {
-			klog.V(1).Info("wait for cluster approved to start remote controller")
+			log.V(1).Info("wait for cluster approved to start remote controller")
 			time.Sleep(10 * time.Second)
 		}
 	}
@@ -75,45 +77,40 @@ func RemoteController(mgr manager.Manager) error {
 	cfg, err := clustertools.GenerateKubeConfigFromToken(config.Pread().MasterURL,
 		config.Pread().BootstrapToken, nil, 2)
 	if err != nil {
-		klog.Fatalf("Error building kubeconfig: %s", err.Error())
+		log.Error(err, "error building kubeconfig")
 	}
 
 	// current cluster clientset
 	kubeClient, err := kubernetes.NewForConfig(rest.CopyConfig(mgr.GetConfig()))
 	if err != nil {
-		klog.Fatalf("Error building kubernetes clientset: %s", err.Error())
+		log.Error(err, "error building kubernetes clientset")
 	}
 	// current cluster dynamic clientset
 	dynamicClient, err := dynamic.NewForConfig(rest.CopyConfig(mgr.GetConfig()))
 	if err != nil {
-		klog.Fatalf("Error building kubernetes clientset: %s", err.Error())
+		log.Error(err, "error building kubernetes dynamic clientset")
 	}
-
 	// current cluster discovery clientset
 	discoveryClient, err := discovery.NewDiscoveryClientForConfig(rest.CopyConfig(mgr.GetConfig()))
 	if err != nil {
-		klog.Fatalf("Error building kubernetes clientset: %s", err.Error())
+		log.Error(err, "Error building kubernetes discovery clientset")
 	}
-
 	// manager cluster clientset
 	rocketclientset, err := clientset.NewForConfig(cfg)
 	if err != nil {
-		klog.Fatalf("Error building rocket clientset: %s", err.Error())
+		log.Error(err, "error building rocket clientset")
 	}
 
 	kruiseClient, err := kclientset.NewForConfig(rest.CopyConfig(mgr.GetConfig()))
 	if err != nil {
-		klog.Fatalf("Error building open-kruise clientset: %s", err.Error())
+		log.Error(err, "error building open-kruise clientset")
 	}
 
 	// kubeInformerFactory := kubeinformers.NewSharedInformerFactory(kubeClient, time.Second*30)
 	rocketInformerFactory := informers.NewSharedInformerFactory(rocketclientset, time.Second*60)
 	kruiseInformerFactory := kinformers.NewSharedInformerFactory(kruiseClient, time.Second*60)
 
-	workloadcontroller := workload.NewController(dynamicClient, rocketclientset,
-		rocketInformerFactory.Rocket().V1alpha1().Workloads())
-
-	appcontroller := application.NewController(kubeClient, kruiseClient, rocketclientset,
+	appcontroller := application.NewController(kubeClient, dynamicClient, kruiseClient, rocketclientset,
 		rocketInformerFactory.Rocket().V1alpha1().Applications())
 
 	distributioncontroller := distribution.NewController(dynamicClient, discoveryClient,
@@ -125,16 +122,10 @@ func RemoteController(mgr manager.Manager) error {
 	kruiseInformerFactory.Start(stopCh)
 
 	go func() {
-		if err = appcontroller.Run(2, stopCh); err != nil {
-			klog.Fatalf("Error running application controller: %s", err.Error())
-		}
-	}()
-
-	go func() {
 		if err = distributioncontroller.Run(2, stopCh); err != nil {
-			klog.Fatalf("Error running distribution controller: %s", err.Error())
+			log.Error(err, "Error running distribution controller")
 		}
 	}()
 
-	return workloadcontroller.Run(2, stopCh)
+	return appcontroller.Run(1, stopCh)
 }

@@ -14,7 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/yaml"
-	"k8s.io/klog/v2"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 const (
@@ -48,13 +48,13 @@ func (*pub) Generate(ttemp *rocketv1alpha1.Trait, obj interface{}) error {
 	return nil
 }
 
-func (p *pub) Handler(ttemp *rocketv1alpha1.Trait, workload *rocketv1alpha1.Workload,
+func (p *pub) Handler(ttemp *rocketv1alpha1.Trait, app *rocketv1alpha1.Application,
 	event EventType, client *Client) error {
-	namespace := workload.Namespace
-	name := workload.Name
+	namespace := app.Namespace
+	name := app.Name
 	// workload 已删除，不需要判断，直接删除
-	if !workload.DeletionTimestamp.IsZero() || workload == nil {
-		err := client.kclient.PolicyV1alpha1().PodUnavailableBudgets(namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
+	if !app.DeletionTimestamp.IsZero() || app == nil {
+		err := client.Kclient.PolicyV1alpha1().PodUnavailableBudgets(namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
 		if err != nil {
 			if !errors.IsNotFound(err) {
 				return err
@@ -76,29 +76,29 @@ func (p *pub) Handler(ttemp *rocketv1alpha1.Trait, workload *rocketv1alpha1.Work
 		return err
 	}
 	pub.Spec = *spec
-	pub.Spec.TargetReference = generateTarget(workload)
+	pub.Spec.TargetReference = generateTarget(app)
 	if pub.Spec.TargetReference == nil {
 		return fmt.Errorf("generate target reference failed")
 	}
-	old, err := client.kclient.PolicyV1alpha1().PodUnavailableBudgets(namespace).Get(context.TODO(), name, metav1.GetOptions{})
+	old, err := client.Kclient.PolicyV1alpha1().PodUnavailableBudgets(namespace).Get(context.TODO(), name, metav1.GetOptions{})
 	if err != nil {
 		if !errors.IsNotFound(err) {
 			return err
 		}
-		if event == Created {
-			_, err = client.kclient.PolicyV1alpha1().PodUnavailableBudgets(namespace).Create(context.TODO(), pub, metav1.CreateOptions{})
+		if event == CreatedOrUpdate {
+			_, err = client.Kclient.PolicyV1alpha1().PodUnavailableBudgets(namespace).Create(context.TODO(), pub, metav1.CreateOptions{})
 			return err
 		}
 	}
-	if event == Created {
+	if event == CreatedOrUpdate {
 		if !cmp.Equal(old.Spec, pub.Spec) || !cmp.Equal(old.Annotations, pub.Annotations) {
 			old.Spec = pub.Spec
-			_, err = client.kclient.PolicyV1alpha1().PodUnavailableBudgets(namespace).Update(context.TODO(), old, metav1.UpdateOptions{})
+			_, err = client.Kclient.PolicyV1alpha1().PodUnavailableBudgets(namespace).Update(context.TODO(), old, metav1.UpdateOptions{})
 			return err
 		}
 	}
 	if event == Deleted {
-		err := client.kclient.PolicyV1alpha1().PodUnavailableBudgets(namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
+		err := client.Kclient.PolicyV1alpha1().PodUnavailableBudgets(namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
 		if err != nil {
 			if !errors.IsNotFound(err) {
 				return err
@@ -108,16 +108,16 @@ func (p *pub) Handler(ttemp *rocketv1alpha1.Trait, workload *rocketv1alpha1.Work
 	return nil
 }
 
-func generateTarget(workload *rocketv1alpha1.Workload) *kruisepolicyv1alpha1.TargetReference {
+func generateTarget(app *rocketv1alpha1.Application) *kruisepolicyv1alpha1.TargetReference {
 	target := &kruisepolicyv1alpha1.TargetReference{
-		Name: fmt.Sprintf("%s-%s", constant.Prefix, workload.Name),
+		Name: app.Name,
 	}
-	_, gvk, err := gvktools.GetResourceAndGvkFromWorkload(workload)
+	_, gvk, err := gvktools.GetResourceAndGvkFromApplication(app)
 	if err != nil {
-		klog.Errorf("get resource and gvk from workload failed: %v", err)
+		log.Log.Error(err, "get resource and gvk from workload failed")
 		return nil
 	}
-	gvr := gvktools.SetGVRForWorkload(gvk)
+	gvr := gvktools.SetGVRForApplication(gvk)
 	switch gvr.Resource {
 	case "deployments":
 		target.APIVersion = "apps/v1"

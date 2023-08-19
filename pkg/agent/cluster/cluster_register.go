@@ -3,6 +3,7 @@ package cluster
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"sync"
 	"time"
 
@@ -17,7 +18,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	"k8s.io/klog/v2"
+	ctrlLog "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 )
 
@@ -27,6 +28,8 @@ const (
 
 	clusterlabel = "rocket.hextech.io/cluster-name"
 )
+
+var log = ctrlLog.FromContext(context.Background())
 
 // 注册器，负责将集群注册到 manager
 type register struct {
@@ -57,12 +60,13 @@ var (
 	create = true
 )
 
-func RegisterInit(param *agentconfig.CommandParam, mgr manager.Manager, p *agentconfig.ModuleParams) {
+func RegisterInit(param *agentconfig.CommandParam, mgr manager.Manager) {
 	heartbeatTime = time.Duration(param.KeepAliveSecond) * time.Second
-	klog.Infof("master: '%s', bootstrap token: '%s'", param.MasterURL, param.BootstrapToken)
+	log.V(0).Info("register init", "MasterURL", param.MasterURL, "Token", param.BootstrapToken)
 	configfile, err := clustertools.GenerateKubeConfigFromToken(param.MasterURL, param.BootstrapToken, nil, 1)
 	if err != nil {
-		klog.Fatalf("generate config with error: %v", err)
+		log.Error(err, "generate config")
+		os.Exit(1)
 	}
 	registerInstance = &register{
 		cli: rocketclientset.NewForConfigOrDie(configfile),
@@ -74,9 +78,8 @@ func RegisterInit(param *agentconfig.CommandParam, mgr manager.Manager, p *agent
 				},
 			},
 			Spec: rocketv1alpha1.ClusterSpec{
-				Region:      param.Region,
-				Area:        param.Area,
-				Environment: param.Environment,
+				Region:    param.Region,
+				CloudArea: param.Area,
 			},
 		},
 		param: param,
@@ -91,16 +94,6 @@ func RegisterInit(param *agentconfig.CommandParam, mgr manager.Manager, p *agent
 			}
 			time.Sleep(2 * time.Second)
 		}
-		for {
-			klog.V(3).Infof("it is observed that the cluster is '%s'", State)
-			if State == string(rocketv1alpha1.Approve) && registed {
-				if err := installModulesInCluster(p, mgr, param.Name); err != nil {
-					klog.Errorf("install modules with error: %v", err)
-				}
-				return
-			}
-			<-ticker.C
-		}
 	}()
 }
 
@@ -111,7 +104,8 @@ func (r *register) isClusterExist() *register {
 		if errors.IsNotFound(err) {
 			return r
 		}
-		klog.Fatalf("Determine whether the cluster exists with error: %v", err)
+		log.Error(err, "Determine whether the cluster exists")
+		os.Exit(1)
 	}
 	create = false
 	State = string(cls.Status.State)
@@ -126,7 +120,8 @@ func (r *register) registerCluster(mgr manager.Manager) *register {
 		r.currentCluster.Spec.ID = id
 		_, err := handleControllerRevision(id, mgr)
 		if err != nil {
-			klog.Fatalf("register cluster failed with error: %v(create controllerrevision)", err)
+			log.Error(err, "register cluster failed when create controllerrevision")
+			os.Exit(1)
 		}
 		ticker := time.NewTicker(waitTime)
 		defer ticker.Stop()
@@ -138,7 +133,8 @@ func (r *register) registerCluster(mgr manager.Manager) *register {
 					<-ticker.C
 					continue
 				} else {
-					klog.Fatalf("register cluster failed with error: %v(create)", err)
+					log.Error(err, "register cluster failed when create")
+					os.Exit(1)
 				}
 			}
 			lock.Lock()
@@ -151,15 +147,16 @@ func (r *register) registerCluster(mgr manager.Manager) *register {
 	} else {
 		cr, err := handleControllerRevision(id, mgr)
 		if err != nil {
-			klog.Fatalf("register cluster failed with error: %v(exist)", err)
+			log.Error(err, "register cluster failed when exist")
+			os.Exit(1)
 		}
 		cid := &clusterID{}
 		json.Unmarshal(cr.Data.Raw, cid)
 		if r.currentCluster.Spec.ID != cid.ID {
 			for {
 				// 如果集群名称相同，但是 id 不同，则认为已有集群使用相同名字，当前 agent 夯住，通过重启更新
-				klog.Errorf("name '%s' cluster already exist, but id is not match, please change name.", config.Pread().Name)
-				klog.Infof("cr id :%s, cluster id: %s", cid.ID, r.currentCluster.Spec.ID)
+				log.Error(nil, "cluster already exist, but id is not match, please change name.", "Cluster", config.Pread().Name,
+					"ControllerRevision ID", cid.ID, "Cluster ID", r.currentCluster.Spec.ID)
 				time.Sleep(waitTime)
 			}
 		} else {
@@ -177,7 +174,7 @@ func (r *register) isClusterApproveOrNot(mgr manager.Manager) *register {
 			}),
 		})
 	if err != nil {
-		klog.Errorf("watch cluster status with error %v", err)
+		log.Error(err, "watch cluster status")
 		return r
 	}
 	defer watcher.Stop()
@@ -196,7 +193,7 @@ func (r *register) isClusterApproveOrNot(mgr manager.Manager) *register {
 func (r *register) syncAuthData(mgr manager.Manager) *register {
 	cls, err := r.cli.RocketV1alpha1().Clusters().Get(context.TODO(), r.currentCluster.Name, metav1.GetOptions{})
 	if err != nil {
-		klog.Errorf("sync auth data get cluster with error: %v", err)
+		log.Error(err, "sync auth data get cluster")
 		return r
 	}
 	r.currentCluster = cls
@@ -215,7 +212,7 @@ func (r *register) syncAuthData(mgr manager.Manager) *register {
 	cls.Spec = r.currentCluster.Spec
 	updated, err := r.cli.RocketV1alpha1().Clusters().Update(context.TODO(), cls, metav1.UpdateOptions{})
 	if err != nil {
-		klog.V(0).Infof("sync auth data with error: %v", err)
+		log.Error(err, "sync auth data")
 		return r
 	}
 	r.currentCluster = updated
@@ -223,28 +220,27 @@ func (r *register) syncAuthData(mgr manager.Manager) *register {
 }
 
 func (r *register) heartbeat(mgr manager.Manager) {
-	klog.V(0).Info("start heartbeat goroutine")
+	log.V(0).Info("start heartbeat goroutine")
 	ticker := time.NewTicker(heartbeatTime)
 	defer ticker.Stop()
 	for range ticker.C {
 		geted, err := r.cli.RocketV1alpha1().Clusters().Get(context.TODO(),
 			r.currentCluster.Name, metav1.GetOptions{})
 		if err != nil {
-			klog.Errorf("heartbeat get cluster with error: %v", err)
+			log.Error(err, "heartbeat get cluster")
 			continue
 		}
 		lock.Lock()
 		r.currentCluster = geted
 		r.currentCluster.Status.LastKeepAliveTime = metav1.Now()
 		lock.Unlock()
-		klog.V(3).Infof("heartbeat current cluster '%s' success and status is %s",
-			r.currentCluster.Name, r.currentCluster.Status.State)
+		log.V(3).Info("heartbeat", "Cluster", r.currentCluster.Name, "Status", r.currentCluster.Status.State)
 		updated, err := r.cli.RocketV1alpha1().Clusters().UpdateStatus(context.TODO(),
 			r.currentCluster, metav1.UpdateOptions{})
 		if err != nil {
-			klog.V(0).Infof("heartbeat failed with error: %v", err)
+			log.Error(err, "heartbeat failed", err)
 		} else {
-			klog.V(3).Infof("heartbeat success")
+			log.V(3).Info("heartbeat success")
 			lock.Lock()
 			r.currentCluster = updated
 			lock.Unlock()
@@ -256,14 +252,14 @@ func (r *register) statusJudgement(status *rocketv1alpha1.ClusterStatus) bool {
 	exit := false
 	switch status.State {
 	case rocketv1alpha1.Reject:
-		klog.V(0).Info("cluster has been reject")
+		log.V(0).Info("cluster has been reject")
 		State = string(rocketv1alpha1.Reject)
 	case rocketv1alpha1.Approve:
-		klog.V(0).Info("cluster was approve")
+		log.V(0).Info("cluster was approve")
 		State = string(rocketv1alpha1.Approve)
 		exit = true
 	case rocketv1alpha1.Offline:
-		klog.V(0).Info("cluster was Offline, will send heartbeat later")
+		log.V(0).Info("cluster was Offline, will send heartbeat later")
 		State = string(rocketv1alpha1.Approve)
 		exit = true
 	}
@@ -272,15 +268,15 @@ func (r *register) statusJudgement(status *rocketv1alpha1.ClusterStatus) bool {
 
 // 通过 kube-public 的 cluster-info 获取 ca
 func (r *register) getCAFromPublic(mgr manager.Manager) []byte {
-	klog.V(3).Info("get CertificateAuthorityData from 'kube-public/cluster-info'")
+	log.V(3).Info("get CertificateAuthorityData from 'kube-public/cluster-info'")
 	cli, err := kubernetes.NewForConfig(rest.CopyConfig(mgr.GetConfig()))
 	if err != nil {
-		klog.Error(err)
+		log.Error(err, "generate client failed when get ca from 'kube-public/cluster-info'")
 		return []byte("")
 	}
 	cm, err := cli.CoreV1().ConfigMaps("kube-public").Get(context.TODO(), "kube-root-ca.crt", metav1.GetOptions{})
 	if err != nil {
-		klog.Error(err)
+		log.Error(err, "get configmap 'kube-root-ca.crt' failed")
 		return []byte("")
 	}
 	ca := cm.Data["ca.crt"]

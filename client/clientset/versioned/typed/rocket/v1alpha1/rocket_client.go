@@ -30,8 +30,6 @@ type RocketV1alpha1Interface interface {
 	ApplicationsGetter
 	ClustersGetter
 	DistributionsGetter
-	TemplatesGetter
-	WorkloadsGetter
 }
 
 // RocketV1alpha1Client is used to interact with features provided by the rocket group.
@@ -49,14 +47,6 @@ func (c *RocketV1alpha1Client) Clusters() ClusterInterface {
 
 func (c *RocketV1alpha1Client) Distributions(namespace string) DistributionInterface {
 	return newDistributions(c, namespace)
-}
-
-func (c *RocketV1alpha1Client) Templates(namespace string) TemplateInterface {
-	return newTemplates(c, namespace)
-}
-
-func (c *RocketV1alpha1Client) Workloads(namespace string) WorkloadInterface {
-	return newWorkloads(c, namespace)
 }
 
 // NewForConfig creates a new RocketV1alpha1Client for the given config.

@@ -34,12 +34,12 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/workqueue"
-	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
@@ -148,12 +148,13 @@ func (r *ClusterReconciler) doReconcile(cluster *rocketv1alpha1.Cluster) error {
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	log := log.FromContext(context.Background())
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&rocketv1alpha1.Cluster{}, builder.WithPredicates(predicate.Funcs{
 			CreateFunc: func(e event.CreateEvent) bool {
 				obj := e.Object.(*rocketv1alpha1.Cluster)
 				if err := r.handleControllerRevision(obj); err != nil {
-					klog.Error(err)
+					log.Error(err, "create cluster controller revision failed")
 				}
 				return true
 			},
@@ -161,7 +162,7 @@ func (r *ClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 				// 将旧的 cluster 信息，存储到 controllerrevision
 				old := ue.ObjectOld.(*rocketv1alpha1.Cluster)
 				if err := r.handleControllerRevision(old); err != nil {
-					klog.Error(err)
+					log.Error(err, "update cluster controller revision failed")
 				}
 				return true
 			},

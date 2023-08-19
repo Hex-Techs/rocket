@@ -19,9 +19,7 @@ rules:
   - rocket.hextech.io
   resources:
   - clusters
-  - templates
   - applications
-  - workloads
   - distributions
   verbs:
   - create
@@ -35,9 +33,7 @@ rules:
   - rocket.hextech.io
   resources:
   - clusters/finalizers
-  - templates/finalizers
   - applications/finalizers
-  - workloads/finalizers
   - distributions/finalizers
   verbs:
   - update
@@ -45,9 +41,7 @@ rules:
   - rocket.hextech.io
   resources:
   - clusters/status
-  - templates/status
   - applications/status
-  - workloads/status
   - distributions/status
   verbs:
   - get
@@ -108,7 +102,6 @@ rules:
   - rocket.hextech.io
   resources:
   - clusters
-  - workloads
   - applications
   - distributions
   verbs:
@@ -121,7 +114,6 @@ rules:
   - rocket.hextech.io
   resources:
   - clusters/status
-  - workloads/status
   - applications/status
   - distributions/status
   verbs:
