@@ -18,11 +18,12 @@ package main
 
 import (
 	"flag"
-	"os"
-	"time"
+	"path/filepath"
 
+	"github.com/fize/go-ext/log"
 	"github.com/hex-techs/rocket/pkg/agent"
-	"github.com/hex-techs/rocket/pkg/agent/cluster"
+
+	// "github.com/hex-techs/rocket/pkg/agent/cluster"
 	"github.com/hex-techs/rocket/pkg/utils/config"
 	kruiseapi "github.com/openkruise/kruise-api"
 	"github.com/spf13/pflag"
@@ -31,14 +32,12 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 )
 
 var (
-	scheme   = runtime.NewScheme()
-	setupLog = ctrl.Log.WithName("setup")
+	scheme = runtime.NewScheme()
 )
 
 func init() {
@@ -48,31 +47,29 @@ func init() {
 }
 
 func main() {
-	param := new(config.CommandParam)
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 	var enabledSchemes []string
 	var metricsAddr string
 	var enableLeaderElection bool
 	var probeAddr string
-	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8090", "The address the metric endpoint binds to.")
-	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8091", "The address the probe endpoint binds to.")
-	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
+	var configFile string
+	pflag.StringVar(&metricsAddr, "metrics-bind-address", ":8090", "The address the metric endpoint binds to.")
+	pflag.StringVar(&probeAddr, "health-probe-bind-address", ":8091", "The address the probe endpoint binds to.")
+	pflag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
-	pflag.StringSliceVar(&enabledSchemes, "enabled-schemes", []string{""}, "The schemes enabled in this agent cluster.")
-
-	pflag.StringVar(&param.Name, "name", "", "The name of this agent cluster.")
-	pflag.StringVar(&param.Region, "region", "beijing", "The region of this agent cluster.")
-	pflag.StringVar(&param.Area, "area", "public", "The area of this agent cluster.")
-	pflag.StringVar(&param.MasterURL, "master-url", "", "The manager cluster apiserver url.")
-	pflag.StringVar(&param.BootstrapToken, "bootstrap-token", "", "The bootstrap token use to register.")
-	pflag.IntVar(&param.KeepAliveSecond, "keepalive-second", 300, "The heartbeet interval time, default: 300.")
-	config.LogOpts.BindFlags(flag.CommandLine)
-	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
+	pflag.StringSliceVar(&enabledSchemes, "enabled-schemes", []string{}, "The schemes enabled in this agent cluster.")
+	pflag.StringVarP(&configFile, "config", "c", "./config.yaml", "config file path")
 	pflag.Parse()
-	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&config.LogOpts)))
-	config.Set(param)
 
+	dir := filepath.Dir(configFile)
+	fileName := filepath.Base(configFile)
+	if err := config.Load(dir, fileName, false); err != nil {
+		panic(err)
+	}
+
+	logger := log.InitLogger()
+	defer logger.Sync()
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                  scheme,
 		MetricsBindAddress:      metricsAddr,
@@ -83,45 +80,37 @@ func main() {
 		LeaderElectionNamespace: "rocket-system",
 	})
 	if err != nil {
-		setupLog.Error(err, "unable to start agent")
-		os.Exit(1)
+		log.Fatalf("unable to start agent: %v", err)
 	}
-	cluster.RegisterInit(param, mgr)
 
 	if err := agent.InitReconcilers(mgr, enabledSchemes); err != nil {
-		setupLog.Error(err, "unable to create controllers")
-		os.Exit(1)
+		log.Fatalf("unable to create controllers: %v", err)
 	}
 
 	//+kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
-		setupLog.Error(err, "unable to set up health check")
-		os.Exit(1)
+		log.Fatalf("unable to set up health check: %v", err)
 	}
 	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
-		setupLog.Error(err, "unable to set up ready check")
-		os.Exit(1)
+		log.Fatalf("unable to set up ready check: %v", err)
 	}
 
-	setupLog.Info("starting manager")
-	go func() {
-		if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
-			setupLog.Error(err, "problem running manager")
-			os.Exit(1)
-		}
-	}()
-	// 成为 leader 之后启动 controller
-	for {
-		_, ok := <-mgr.Elected()
-		if !ok {
-			break
-		}
-		time.Sleep(2 * time.Second)
+	log.Info("starting agent manager")
+	// go func() {
+	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
+		log.Fatalf("problem running manager: %v", err)
 	}
-	setupLog.Info("starting remote manager")
-	if err := agent.RemoteController(mgr); err != nil {
-		setupLog.Error(err, "problem running remote controller")
-		os.Exit(1)
-	}
+	// }()
+	// for {
+	// 	_, ok := <-mgr.Elected()
+	// 	if !ok {
+	// 		break
+	// 	}
+	// 	time.Sleep(2 * time.Second)
+	// }
+	// log.Info("starting remote manager")
+	// if err := agent.RemoteController(mgr); err != nil {
+	// 	log.Fatalf("problem running remote controller: %v", err)
+	// }
 }

@@ -1,26 +1,13 @@
 package constant
 
 import (
-	rocketv1alpha1 "github.com/hex-techs/rocket/api/v1alpha1"
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	kruiseappsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 )
-
-// Testapplication is a application for test
-var Testapplication = rocketv1alpha1.Application{
-	ObjectMeta: metav1.ObjectMeta{
-		Name:      "test",
-		Namespace: "default",
-	},
-	Spec: rocketv1alpha1.ApplicationSpec{
-		Template: runtime.RawExtension{},
-	},
-}
 
 // PodTemp is a pod template for test
 var PodTemp = v1.PodTemplateSpec{

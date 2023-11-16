@@ -1,28 +1,21 @@
-apiVersion: rocket.hextech.io/v1alpha1
-kind: Application
-metadata:
+name: test
+namespace: default
+projectId: 1
+description: test
+cloudArea: public
+environment: prod
+regions:
+  - beijing
+template:
+  type: Deployment
   name: test
-spec:
-  regions:
-    - beijing
-  cloudArea: public
-  environment: test
-  replicas: 2
-  template:
-    apiVersion: apps/v1
-    kind: Deployment
-    spec:
-      selector:
-        matchLabels:
-          app: nginx
-      template:
-        metadata:
-          labels:
-            app: nginx
-        spec:
-          containers:
-          - name: nginx
-            image: nginx:1.14.2
-            ports:
-            - containerPort: 80
-
+  image: nginx:1.7
+  resources:
+    limits:
+      cpu: 1
+      memory: 1Gi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+scale:
+  replicas: 1

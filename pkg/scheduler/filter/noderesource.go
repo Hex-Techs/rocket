@@ -4,11 +4,11 @@ import (
 	"context"
 	"errors"
 
+	"github.com/fize/go-ext/log"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/kubernetes/pkg/scheduler/apis/config"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 	schedutil "k8s.io/kubernetes/pkg/scheduler/util"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 // resourceToWeightMap 包含资源名称和权重.
@@ -19,7 +19,6 @@ type resourceToValueMap map[v1.ResourceName]int64
 
 // 节点资源过滤，计算节点可以分配的pod数量
 func resourceFilter(ctx context.Context, pod *v1.Pod, nodeInfo *framework.NodeInfo) (int64, error) {
-	log := log.FromContext(ctx)
 	node := nodeInfo.Node()
 	if node == nil {
 		return 0, errors.New("node not found")
@@ -29,7 +28,6 @@ func resourceFilter(ctx context.Context, pod *v1.Pod, nodeInfo *framework.NodeIn
 	if rtwm == nil {
 		return 0, errors.New("resources not found")
 	}
-
 	requested := make(resourceToValueMap)
 	allocatable := make(resourceToValueMap)
 	request := make(resourceToValueMap)
@@ -44,26 +42,25 @@ func resourceFilter(ctx context.Context, pod *v1.Pod, nodeInfo *framework.NodeIn
 			request[resource] = v
 		}
 	}
-	log.V(4).Info("node resource information", "nodeName", node.Name, "Request", request, "Requested", requested, "Allocatable", allocatable)
+	log.Debugw("node resource information", "nodeName", node.Name, "Request", request, "Requested", requested, "Allocatable", allocatable)
 	replicas := calculateNodeCanAllocatePodReplicas(request, requested, allocatable)
-	log.V(4).Info("number of node that can be allocated", "nodeName", node.Name, "Replicas", replicas)
+	log.Debugw("number of node that can be allocated", "nodeName", node.Name, "Replicas", replicas)
 	return replicas, nil
 }
 
 // 计算节点可以分配的pod数量
 func calculateNodeCanAllocatePodReplicas(request, requested, allocable resourceToValueMap) int64 {
-	log := log.FromContext(context.Background())
 	var minReplicas []int64
 	for resource := range request {
 		requestValue := request[resource]
 		requestedValue := requested[resource]
 		allocableValue := allocable[resource]
 		if allocableValue < requestValue {
-			log.V(4).Info("the available CPU resources are insufficient", "Request", requestValue, "Allocable", allocableValue, "resourceName", resource)
+			log.Debugw("the available CPU resources are insufficient", "Request", requestValue, "Allocable", allocableValue, "resourceName", resource)
 			return 0
 		}
 		if allocableValue < requestedValue {
-			log.V(4).Info("calculate error requested value are insufficient", "Requestd", requestedValue, "Allocable", allocableValue, "resourceName", resource)
+			log.Debugw("calculate error requested value are insufficient", "Requestd", requestedValue, "Allocable", allocableValue, "resourceName", resource)
 			return 0
 		}
 		minReplicas = append(minReplicas, (allocableValue-requestedValue)/requestValue)
@@ -80,7 +77,7 @@ func calculateNodeCanAllocatePodReplicas(request, requested, allocable resourceT
 	return min
 }
 
-// calculatePodResourceRequest 返回非0请求总数. 目前liuer平台没有使用pod overhead（开销）特性
+// calculatePodResourceRequest 返回非0请求总数. 目前平台没有使用pod overhead（开销）特性
 // podResourceRequest = max(sum(podSpec.Containers), podSpec.InitContainers) + overHead
 func calculatePodResourceRequest(pod *v1.Pod, resource v1.ResourceName) int64 {
 	var podRequest int64
@@ -98,7 +95,7 @@ func calculatePodResourceRequest(pod *v1.Pod, resource v1.ResourceName) int64 {
 		}
 	}
 
-	// 关于pod开销的计算，liuer平台没有使用pod overhead（开销）特性
+	// 关于pod开销的计算，平台没有使用pod overhead（开销）特性
 	if pod.Spec.Overhead != nil {
 		if quantity, found := pod.Spec.Overhead[resource]; found {
 			podRequest += quantity.Value()
@@ -113,7 +110,6 @@ func calculatePodResourceRequest(pod *v1.Pod, resource v1.ResourceName) int64 {
 // Note: 如果资源是扩展资源，并且pod没有使用这个资源, 那么默认返回(0, 0).
 func calculateResourceAllocatableRequest(nodeInfo *framework.NodeInfo, resource v1.ResourceName) (int64, int64) {
 	// requested := nodeInfo.NonZeroRequested
-	log := log.FromContext(context.Background())
 	requested := nodeInfo.Requested
 
 	switch resource {
@@ -128,7 +124,7 @@ func calculateResourceAllocatableRequest(nodeInfo *framework.NodeInfo, resource 
 			return nodeInfo.Allocatable.ScalarResources[resource], nodeInfo.Requested.ScalarResources[resource]
 		}
 	}
-	log.V(5).Info("Requested resource is omitted for node score calculation", "resourceName", resource)
+	log.Debugw("Requested resource is omitted for node score calculation", "resourceName", resource)
 	return 0, 0
 }
 

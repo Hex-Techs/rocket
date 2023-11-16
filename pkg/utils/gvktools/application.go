@@ -4,31 +4,30 @@ import (
 	"errors"
 	"fmt"
 
-	rocketv1alpha1 "github.com/hex-techs/rocket/api/v1alpha1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 // GetResourceAndGvkFromApplication 从 application 中获取资源和 gvk
-func GetResourceAndGvkFromApplication(application *rocketv1alpha1.Application) (*unstructured.Unstructured, *schema.GroupVersionKind, error) {
-	if application.Spec.Template.Object == nil && len(application.Spec.Template.Raw) == 0 {
+func GetResourceAndGvkFromApplication(name, namespace string, application *runtime.RawExtension) (*unstructured.Unstructured, *schema.GroupVersionKind, error) {
+	if application.Object == nil && len(application.Raw) == 0 {
 		return nil, nil, errors.New("application template is nil")
 	}
 	// Decode the resource from the application
-	obj, gvk, err := unstructured.UnstructuredJSONScheme.Decode(application.Spec.Template.Raw, nil, nil)
+	obj, gvk, err := unstructured.UnstructuredJSONScheme.Decode(application.Raw, nil, nil)
 	if err != nil {
-		obj = application.Spec.Template.Object
+		obj = application.Object
 		log.Log.V(3).Info("Failed to decode application template, retry from Object", "error", err)
 	}
 	res := ConvertToUnstructured(obj)
-	res.SetNamespace(application.Namespace)
-	res.SetName(application.Name)
+	res.SetName(name)
 	if res == nil {
 		return nil, nil, errors.New("application template is nil")
 	}
 	// NOTE: 为了避免资源的 namespace 与 distribution 的 namespace 不一致，这里需要将资源的 namespace 设置为 distribution 的 namespace
-	res.SetNamespace(application.Namespace)
+	res.SetNamespace(namespace)
 	return res, gvk, nil
 }
 

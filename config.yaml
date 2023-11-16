@@ -1,0 +1,22 @@
+agent:
+  name: test
+  region: beijing
+  area: pub
+  managerAddress: http://127.0.0.1:9100
+  bootstrapToken: adminsdfwgwegterwer
+  keepAliveSecond: 300
+  mode: hub
+scheduler:
+  managerAddress: http://127.0.0.1:9100
+  bootstrapToken: adminsdfwgwegterwer
+manager:
+  serverPort: 9100
+  agentBootstrapToken: adminsdfwgwegterwer
+  cors: true
+log:
+  output: stdout
+  format: json # string
+  level: trace
+fakerDate: true
+DB:
+  sqlDebug: false

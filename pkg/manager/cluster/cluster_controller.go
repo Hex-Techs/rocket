@@ -17,190 +17,154 @@ limitations under the License.
 package cluster
 
 import (
-	"context"
-	"encoding/json"
-	"time"
+	"net/http"
+	"strconv"
 
-	"github.com/google/go-cmp/cmp"
-	rocketv1alpha1 "github.com/hex-techs/rocket/api/v1alpha1"
-	"github.com/hex-techs/rocket/pkg/utils/config"
-	"github.com/hex-techs/rocket/pkg/utils/constant"
-	"github.com/hex-techs/rocket/pkg/utils/controllerrevision"
-	"github.com/hex-techs/rocket/pkg/utils/tools"
-	"golang.org/x/time/rate"
-	appsv1 "k8s.io/api/apps/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/util/workqueue"
-	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/builder"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller"
-	"sigs.k8s.io/controller-runtime/pkg/event"
-	"sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/manager"
-	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"github.com/fize/go-ext/log"
+	"github.com/gin-gonic/gin"
+	"github.com/hex-techs/rocket/pkg/cache"
+	"github.com/hex-techs/rocket/pkg/models/cluster"
+	"github.com/hex-techs/rocket/pkg/utils/errs"
+	"github.com/hex-techs/rocket/pkg/utils/storage"
+	"github.com/hex-techs/rocket/pkg/utils/web"
 )
 
-// 下次 reconciler 间隔时间
-const waittime = 5 * time.Minute
-
-// 与上次心跳间隔时间
-var timeout time.Duration
-
-// ClusterReconciler reconciles a Cluster object
-type ClusterReconciler struct {
-	client.Client
-	Scheme *runtime.Scheme
+// NewClusterController return a new cluster controller
+func NewClusterController(s *storage.Engine) web.RestController {
+	cc := &ClusterController{
+		store: s,
+	}
+	go cc.heartbeatChecker()
+	return cc
 }
 
-func NewRecociler(mgr manager.Manager) *ClusterReconciler {
-	timeout = time.Duration(config.Pread().TimeOut) * time.Second
-	return &ClusterReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}
+// ClusterController cluster controller
+type ClusterController struct {
+	web.DefaultController
+	store *storage.Engine
 }
 
-//+kubebuilder:rbac:groups=rocket.hextech.io,resources=clusters,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=rocket.hextech.io,resources=clusters/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=rocket.hextech.io,resources=clusters/finalizers,verbs=update
-
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.14.1/pkg/reconcile
-func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	cluster := &rocketv1alpha1.Cluster{}
-	err := r.Client.Get(ctx, types.NamespacedName{Name: req.Name}, cluster)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			return ctrl.Result{}, nil
-		}
-		return ctrl.Result{RequeueAfter: waittime}, err
-	}
-	obj := cluster.DeepCopy()
-	if obj.DeletionTimestamp.IsZero() {
-		if !tools.ContainsString(obj.Finalizers, constant.ClusterFinalizer) {
-			obj.Finalizers = append(obj.Finalizers, constant.ClusterFinalizer)
-			if err = r.Update(ctx, obj); err != nil {
-				return ctrl.Result{}, err
-			}
-			return ctrl.Result{}, nil
-		}
-	} else {
-		if tools.ContainsString(obj.Finalizers, constant.ClusterFinalizer) {
-			cr := &appsv1.ControllerRevision{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      obj.Name, // Name is cluster name
-					Namespace: constant.RocketNamespace,
-				},
-			}
-			if err := r.Delete(ctx, cr); err != nil {
-				if !errors.IsNotFound(err) {
-					return ctrl.Result{}, err
-				}
-			}
-			obj.Finalizers = tools.RemoveString(obj.Finalizers, constant.ClusterFinalizer)
-			if err = r.Update(ctx, obj); err != nil {
-				return ctrl.Result{}, err
-			}
-		}
-		return ctrl.Result{}, nil
-	}
-
-	err = r.doReconcile(obj)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-	// predicate 阶段已经确保创建了 controllerrevision 资源
-	cr := &appsv1.ControllerRevision{}
-	err = r.Get(ctx, types.NamespacedName{Namespace: constant.RocketNamespace, Name: cluster.Name}, cr)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-	if err := r.Status().Update(ctx, obj); err != nil {
-		return ctrl.Result{}, err
-	}
-	return ctrl.Result{RequeueAfter: waittime}, nil
+// ResourceName
+func (*ClusterController) Name() string {
+	return "cluster"
 }
 
-func (r *ClusterReconciler) doReconcile(cluster *rocketv1alpha1.Cluster) error {
-	if !cluster.Status.LastKeepAliveTime.IsZero() {
-		expire := cluster.Status.LastKeepAliveTime.Add(timeout)
-		if time.Now().After(expire) {
-			// overtime
-			if cluster.Status.State == rocketv1alpha1.Approve {
-				cluster.Status.State = rocketv1alpha1.Offline
-			}
-		} else {
-			// recover from offline
-			if cluster.Status.State == rocketv1alpha1.Reject || cluster.Status.State == rocketv1alpha1.Pending {
-				return nil
-			}
-			if cluster.Status.State == rocketv1alpha1.Offline {
-				cluster.Status.State = rocketv1alpha1.Approve
-			}
+// Create create new cluster
+func (cc *ClusterController) Create() (gin.HandlerFunc, error) {
+	return func(c *gin.Context) {
+		var cls cluster.Cluster
+		if err := c.ShouldBindJSON(&cls); err != nil {
+			c.JSON(http.StatusBadRequest, web.ExceptResponse(errs.ErrInvalidParam, err))
+			return
 		}
-	}
-	return nil
+		log.Debugw("create new cluster", "cluster", cls)
+		if err := cc.store.Create(c, &cls); err != nil {
+			c.JSON(http.StatusOK, web.ExceptResponse(errs.ErrCreated, err))
+			return
+		}
+		cache.GetCommunicationManager().AddMessage(cache.CreateAction, &cls)
+		c.JSON(http.StatusOK, web.OkResponse())
+	}, nil
 }
 
-// SetupWithManager sets up the controller with the Manager.
-func (r *ClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	log := log.FromContext(context.Background())
-	return ctrl.NewControllerManagedBy(mgr).
-		For(&rocketv1alpha1.Cluster{}, builder.WithPredicates(predicate.Funcs{
-			CreateFunc: func(e event.CreateEvent) bool {
-				obj := e.Object.(*rocketv1alpha1.Cluster)
-				if err := r.handleControllerRevision(obj); err != nil {
-					log.Error(err, "create cluster controller revision failed")
-				}
-				return true
-			},
-			UpdateFunc: func(ue event.UpdateEvent) bool {
-				// 将旧的 cluster 信息，存储到 controllerrevision
-				old := ue.ObjectOld.(*rocketv1alpha1.Cluster)
-				if err := r.handleControllerRevision(old); err != nil {
-					log.Error(err, "update cluster controller revision failed")
-				}
-				return true
-			},
-		})).
-		WithOptions(controller.Options{RateLimiter: workqueue.NewMaxOfRateLimiter(
-			workqueue.NewItemExponentialFailureRateLimiter(5*time.Millisecond, 1000*time.Second),
-			// 10 qps, 100 bucket size for default ratelimiter workqueue
-			&workqueue.BucketRateLimiter{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
-		)}).
-		Complete(r)
-}
-
-// controllerrevision 资源不能进行更新操作，所有对于 data 字段的更新都会被拒绝
-// 当前使用删除重建的方式来处理
-func (r *ClusterReconciler) handleControllerRevision(cluster *rocketv1alpha1.Cluster) error {
-	cr := &appsv1.ControllerRevision{}
-	err := r.Get(context.TODO(), types.NamespacedName{Namespace: constant.RocketNamespace, Name: cluster.Name}, cr)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			cr = controllerrevision.GenerateCR(cluster)
-			return r.Create(context.TODO(), cr)
-		}
-		return err
-	}
-	ai := controllerrevision.GenerateAI(cluster)
-	b, _ := json.Marshal(ai)
-	if !cmp.Equal(cr.Data.Raw, b) {
-		err = r.Delete(context.TODO(), cr)
+// Delete delete cluster, but resource of user created and deployed in this cluster will not be deleted
+func (cc *ClusterController) Delete() (gin.HandlerFunc, error) {
+	return func(c *gin.Context) {
+		id, err := web.GetID(c)
 		if err != nil {
-			if !errors.IsNotFound(err) {
-				return err
-			}
+			c.JSON(http.StatusBadRequest, web.ExceptResponse(errs.ErrID, err))
+			return
 		}
-		cr = controllerrevision.GenerateCR(cluster)
-		err = r.Create(context.TODO(), cr)
-		if !errors.IsAlreadyExists(err) {
-			return err
+		log.Debugw("delete cluster", "cluster_id", id)
+		old := &cluster.Cluster{}
+		if err := cc.store.Get(c, id, "", false, old); err != nil {
+			c.JSON(http.StatusOK, web.ExceptResponse(errs.ErrDeleted, err))
+			return
 		}
+		if err := cc.store.ForceDelete(c, id, "", &cluster.Cluster{}); err != nil {
+			c.JSON(http.StatusOK, web.ExceptResponse(errs.ErrDeleted, err))
+			return
+		}
+		if err := cc.deleteRevisionManager(old); err != nil {
+			log.Errorw("failed to delete revision manager when delete cluster", "error", err, "cluster", old)
+		}
+		cache.GetCommunicationManager().AddMessage(cache.DeleteAction, old)
+		c.JSON(http.StatusOK, web.OkResponse())
+	}, nil
+}
+
+// Update update cluster
+func (cc *ClusterController) Update() (gin.HandlerFunc, error) {
+	return func(c *gin.Context) {
+		i := c.Param("id")
+		var name string
+		id, err := strconv.Atoi(i)
+		if err != nil {
+			name = i
+		}
+		var old, cls cluster.Cluster
+		if err := c.ShouldBindJSON(&cls); err != nil {
+			c.JSON(http.StatusBadRequest, web.ExceptResponse(errs.ErrInvalidParam, err))
+			return
+		}
+		if err := cc.store.Get(c, uint(id), name, false, &old); err != nil {
+			c.JSON(http.StatusOK, web.ExceptResponse(errs.ErrUpdated, err))
+			return
+		}
+		log.Debugw("update cluster", "cluster", cls)
+		if err := cc.store.Update(c, uint(id), name, &cls, &cls); err != nil {
+			c.JSON(http.StatusOK, web.ExceptResponse(errs.ErrUpdated, err))
+			return
+		}
+		cls.ID = old.ID
+		go cc.storeRevisionManager(&old, &cls)
+		cache.GetCommunicationManager().AddMessage(cache.UpdateAction, &cls)
+		c.JSON(http.StatusOK, web.OkResponse())
+	}, nil
+}
+
+// Get
+func (cc *ClusterController) Get() (gin.HandlerFunc, error) {
+	return func(c *gin.Context) {
+		i := c.Param("id")
+		var name string
+		id, err := strconv.Atoi(i)
+		if err != nil {
+			name = i
+		}
+		var cls cluster.Cluster
+		if err := cc.store.Get(c, uint(id), name, false, &cls); err != nil {
+			c.JSON(http.StatusOK, web.ExceptResponse(errs.ErrGet, err))
+			return
+		}
+		c.JSON(http.StatusOK, web.DataResponse(&cls))
+	}, nil
+}
+
+// List
+func (cc *ClusterController) List() (gin.HandlerFunc, error) {
+	return func(c *gin.Context) {
+		var req web.Request
+		if err := c.ShouldBindQuery(&req); err != nil {
+			c.JSON(http.StatusBadRequest, web.ExceptResponse(errs.ErrInvalidParam, err))
+			return
+		}
+		req.Default()
+		var clss []cluster.Cluster
+		total, err := cc.store.List(c, req.Limit, req.Page, "", &clss)
+		if err != nil {
+			c.JSON(http.StatusOK, web.ExceptResponse(errs.ErrList, err))
+			return
+		}
+		c.JSON(http.StatusOK, web.ListResponse(int(total), clss))
+	}, nil
+}
+
+func (cc *ClusterController) Middlewares() []web.MiddlewaresObject {
+	return []web.MiddlewaresObject{
+		{
+			Methods: []string{web.CREATE, web.DELETE, web.UPDATE, web.GET, web.LIST},
+			// Middlewares: []gin.HandlerFunc{web.LoginRequired()},
+		},
 	}
-	return nil
 }

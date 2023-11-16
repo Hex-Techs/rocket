@@ -17,124 +17,179 @@ limitations under the License.
 package application
 
 import (
-	"context"
+	"fmt"
+	"net/http"
+	"strconv"
 
-	"github.com/google/go-cmp/cmp"
-	rocketv1alpha1 "github.com/hex-techs/rocket/api/v1alpha1"
-	"github.com/hex-techs/rocket/pkg/utils/constant"
-	"github.com/hex-techs/rocket/pkg/utils/tools"
-	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
-	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/builder"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/event"
-	"sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/manager"
-	"sigs.k8s.io/controller-runtime/pkg/predicate"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	mapset "github.com/deckarep/golang-set/v2"
+	"github.com/fize/go-ext/log"
+	"github.com/gin-gonic/gin"
+	"github.com/hex-techs/rocket/pkg/cache"
+	"github.com/hex-techs/rocket/pkg/models/application"
+	"github.com/hex-techs/rocket/pkg/utils/errs"
+	"github.com/hex-techs/rocket/pkg/utils/storage"
+	"github.com/hex-techs/rocket/pkg/utils/web"
 )
 
-// ApplicationReconciler reconciles a Application object
-type ApplicationReconciler struct {
-	client.Client
-	Scheme *runtime.Scheme
+var kindSet = mapset.NewSet[application.WorkloadType](application.DeploymentType,
+	application.CloneSetType, application.CronJobType)
+
+// NewApplicationController return a new application controller
+func NewApplicationController(s *storage.Engine) web.RestController {
+	ac := &ApplicationController{
+		store: s,
+	}
+	return ac
 }
 
-func NewRecociler(mgr manager.Manager) *ApplicationReconciler {
-	return &ApplicationReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}
+// ApplicationController application controller
+type ApplicationController struct {
+	web.DefaultController
+	store *storage.Engine
 }
 
-//+kubebuilder:rbac:groups=rocket.hextech.io,resources=applications,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=rocket.hextech.io,resources=applications/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=rocket.hextech.io,resources=applications/finalizers,verbs=update
+// ResourceName
+func (*ApplicationController) Name() string {
+	return "application"
+}
 
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.14.1/pkg/reconcile
-func (r *ApplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := log.FromContext(ctx)
-	app := &rocketv1alpha1.Application{}
-	err := r.Client.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: req.Name}, app)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			log.V(5).Info("application is deleted", "application", tools.KObj(app))
-			return reconcile.Result{}, nil
+// Create create new application
+func (ac *ApplicationController) Create() (gin.HandlerFunc, error) {
+	return func(c *gin.Context) {
+		var app application.Application
+		if err := c.ShouldBindJSON(&app); err != nil {
+			c.JSON(http.StatusBadRequest, web.ExceptResponse(errs.ErrInvalidParam, err))
+			return
 		}
-		return ctrl.Result{}, err
-	}
-	obj := app.DeepCopy()
-	if obj.DeletionTimestamp.IsZero() {
-		if !tools.ContainsString(obj.Finalizers, constant.ApplicationFinalizer) {
-			obj.Finalizers = append(obj.Finalizers, constant.ApplicationFinalizer)
-			return ctrl.Result{}, r.Update(ctx, obj)
+		if !kindSet.Contains(app.Template.Type) {
+			c.JSON(http.StatusBadRequest, web.ExceptResponse(errs.ErrInvalidParam,
+				fmt.Sprintf("kind is not supported, only support %s", kindSet.String())))
+			return
 		}
-	} else {
-		if tools.ContainsString(obj.Finalizers, constant.ApplicationFinalizer) {
-			remove := true
-			for _, v := range obj.Status.Conditions {
-				if v.Type == rocketv1alpha1.ApplicationConditionSuccessedScale {
-					switch v.Reason {
-					case constant.CloneSetDeleted:
-						if v.Status != metav1.ConditionTrue {
-							remove = false
-							break
-						}
-					case constant.DeploymentDeleted:
-						if v.Status != metav1.ConditionTrue {
-							remove = false
-							break
-						}
-					case constant.CronJobDeleted:
-						if v.Status != metav1.ConditionTrue {
-							remove = false
-							break
-						}
-					}
-				}
-				if v.Type == rocketv1alpha1.ApplicationConditionSuccessedUpdate {
-					if v.Reason != constant.ReasonTraitDeleted {
-						if v.Status != metav1.ConditionTrue {
-							remove = false
-							break
-						}
+		log.Debugw("create new application", "application", app)
+		if err := ac.store.Create(c, &app); err != nil {
+			c.JSON(http.StatusOK, web.ExceptResponse(errs.ErrCreated, err))
+			return
+		}
+		cache.GetCommunicationManager().AddMessage(cache.CreateAction, app)
+		c.JSON(http.StatusOK, web.OkResponse())
+	}, nil
+}
 
-					}
-				}
+// Delete delete application
+func (ac *ApplicationController) Delete() (gin.HandlerFunc, error) {
+	return func(c *gin.Context) {
+		id, err := web.GetID(c)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, web.ExceptResponse(errs.ErrID, err))
+			return
+		}
+		log.Debugw("delete application", "application_id", id)
+		old := &application.Application{}
+		if err := ac.store.Get(c, id, "", false, old); err != nil {
+			c.JSON(http.StatusOK, web.ExceptResponse(errs.ErrDeleted, err))
+			return
+		}
+		if err := ac.store.Delete(c, id, "", &application.Application{}); err != nil {
+			c.JSON(http.StatusOK, web.ExceptResponse(errs.ErrDeleted, err))
+			return
+		}
+		if err := ac.deleteRevisionManager(old); err != nil {
+			log.Errorw("failed to delete revision manager when delete application", "error", err, "application", old)
+		}
+		cache.GetCommunicationManager().AddMessage(cache.DeleteAction, old)
+		c.JSON(http.StatusOK, web.OkResponse())
+	}, nil
+}
+
+// Update update application
+func (ac *ApplicationController) Update() (gin.HandlerFunc, error) {
+	return func(c *gin.Context) {
+		id, err := web.GetID(c)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, web.ExceptResponse(errs.ErrID, err))
+			return
+		}
+		var old, app application.Application
+		if err := c.ShouldBindJSON(&app); err != nil {
+			c.JSON(http.StatusBadRequest, web.ExceptResponse(errs.ErrInvalidParam, err))
+			return
+		}
+		if !kindSet.Contains(app.Template.Type) {
+			c.JSON(http.StatusBadRequest, web.ExceptResponse(errs.ErrInvalidParam,
+				fmt.Sprintf("kind is not supported, only support %s", kindSet.String())))
+			return
+		}
+		if err := ac.store.Get(c, id, "", false, &old); err != nil {
+			c.JSON(http.StatusOK, web.ExceptResponse(errs.ErrUpdated, err))
+			return
+		}
+		log.Debugw("update application", "application", app)
+		if err := ac.store.Update(c, id, "", &app, &app); err != nil {
+			c.JSON(http.StatusOK, web.ExceptResponse(errs.ErrUpdated, err))
+			return
+		}
+		app.ID = id
+		go ac.storeRevisionManager(&old, &app)
+		cache.GetCommunicationManager().AddMessage(cache.UpdateAction, app)
+		c.JSON(http.StatusOK, web.OkResponse())
+	}, nil
+}
+
+// Get
+func (ac *ApplicationController) Get() (gin.HandlerFunc, error) {
+	return func(c *gin.Context) {
+		i := c.Param("id")
+		var name string
+		id, err := strconv.Atoi(i)
+		if err != nil {
+			name = i
+		}
+		var req web.Request
+		if err := c.ShouldBindQuery(&req); err != nil {
+			c.JSON(http.StatusBadRequest, web.ExceptResponse(errs.ErrInvalidParam, err))
+			return
+		}
+		var app application.Application
+		if req.Deleted {
+			if err := ac.store.Get(c, uint(id), name, true, &app); err != nil {
+				c.JSON(http.StatusOK, web.ExceptResponse(errs.ErrGet, err))
+				return
 			}
-			if remove {
-				obj.Finalizers = tools.RemoveString(obj.Finalizers, constant.ApplicationFinalizer)
-				if err = r.Update(ctx, obj); err != nil {
-					return ctrl.Result{}, err
-				}
+		} else {
+			if err := ac.store.Get(c, uint(id), name, false, &app); err != nil {
+				c.JSON(http.StatusOK, web.ExceptResponse(errs.ErrGet, err))
+				return
 			}
-			return ctrl.Result{}, nil
 		}
-	}
-	return reconcile.Result{}, nil
+		c.JSON(http.StatusOK, web.DataResponse(app))
+	}, nil
 }
 
-// SetupWithManager sets up the controller with the Manager.
-func (r *ApplicationReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
-		For(&rocketv1alpha1.Application{}, builder.WithPredicates(predicate.Funcs{
-			UpdateFunc: func(e event.UpdateEvent) bool {
-				old := e.ObjectOld.(*rocketv1alpha1.Application).DeepCopy()
-				new := e.ObjectNew.(*rocketv1alpha1.Application).DeepCopy()
-				for i := range old.Status.Conditions {
-					old.Status.Conditions[i].LastTransitionTime = metav1.Time{}
-				}
-				for i := range new.Status.Conditions {
-					new.Status.Conditions[i].LastTransitionTime = metav1.Time{}
-				}
-				return !cmp.Equal(old.GetGeneration(), new.GetGeneration()) ||
-					!cmp.Equal(old.Status.Conditions, new.Status.Conditions) ||
-					!cmp.Equal(old.Labels, new.Labels)
-			},
-		})).
-		Complete(r)
+// List
+func (ac *ApplicationController) List() (gin.HandlerFunc, error) {
+	return func(c *gin.Context) {
+		var req web.Request
+		if err := c.ShouldBindQuery(&req); err != nil {
+			c.JSON(http.StatusBadRequest, web.ExceptResponse(errs.ErrInvalidParam, err))
+			return
+		}
+		req.Default()
+		var apps []application.Application
+		total, err := ac.store.List(c, req.Limit, req.Page, "", &apps)
+		if err != nil {
+			c.JSON(http.StatusOK, web.ExceptResponse(errs.ErrList, err))
+			return
+		}
+		c.JSON(http.StatusOK, web.ListResponse(int(total), apps))
+	}, nil
+}
+
+func (ac *ApplicationController) Middlewares() []web.MiddlewaresObject {
+	return []web.MiddlewaresObject{
+		{
+			Methods: []string{web.CREATE, web.DELETE, web.UPDATE, web.GET, web.LIST},
+			// Middlewares: []gin.HandlerFunc{web.LoginRequired()},
+		},
+	}
 }

@@ -3,7 +3,7 @@ package clustertools
 import (
 	"fmt"
 
-	rocketv1alpha1 "github.com/hex-techs/rocket/api/v1alpha1"
+	"github.com/hex-techs/rocket/pkg/models/cluster"
 	"github.com/hex-techs/rocket/pkg/utils/config"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -44,7 +44,7 @@ func createBasicKubeConfig(serverURL, clusterName, userName string, caCert []byt
 // CreateKubeConfigWithToken creates a KubeConfig object with access to the API server with a token
 func CreateKubeConfigWithToken(serverURL, token string, caCert []byte) *clientcmdapi.Config {
 	userName := "rocket-agent"
-	clusterName := config.Pread().Name
+	clusterName := config.Read().Agent.Name
 	config := createBasicKubeConfig(serverURL, clusterName, userName, caCert)
 	config.AuthInfos[userName] = &clientcmdapi.AuthInfo{
 		Token: token,
@@ -71,15 +71,24 @@ func GenerateKubeConfigFromToken(serverURL, token string, caCert []byte, flowRat
 	return config, nil
 }
 
-func GenerateRestConfigFromCluster(cluster *rocketv1alpha1.Cluster) (*rest.Config, error) {
-	configV1 := generateKubeConfig(cluster)
-	configObject, err := clientcmdlatest.Scheme.ConvertToVersion(configV1, clientcmdapi.SchemeGroupVersion)
-	if err != nil {
-		return nil, err
+func GenerateRestConfigFromCluster(cluster *cluster.Cluster) (*rest.Config, error) {
+	configInternal := new(clientcmdapi.Config)
+	if cluster.Kubeconfig != "" {
+		c, err := clientcmd.Load([]byte(cluster.Kubeconfig))
+		if err != nil {
+			return nil, err
+		}
+		configInternal = c
+	} else {
+		configV1 := generateKubeConfig(cluster)
+		configObject, err := clientcmdlatest.Scheme.ConvertToVersion(configV1, clientcmdapi.SchemeGroupVersion)
+		if err != nil {
+			return nil, err
+		}
+		configInternal = configObject.(*clientcmdapi.Config)
 	}
-	configInternal := configObject.(*clientcmdapi.Config)
 	restConfig, err := clientcmd.NewDefaultClientConfig(*configInternal, &clientcmd.ConfigOverrides{
-		ClusterDefaults: clientcmdapi.Cluster{Server: cluster.Spec.APIServer},
+		ClusterDefaults: clientcmdapi.Cluster{Server: cluster.APIServer},
 	}).ClientConfig()
 	if err != nil {
 		return nil, err
@@ -87,7 +96,7 @@ func GenerateRestConfigFromCluster(cluster *rocketv1alpha1.Cluster) (*rest.Confi
 	return restConfig, nil
 }
 
-func generateKubeConfig(cluster *rocketv1alpha1.Cluster) *clientcmdapiv1.Config {
+func generateKubeConfig(cluster *cluster.Cluster) *clientcmdapiv1.Config {
 	cfg := &clientcmdapiv1.Config{
 		APIVersion: "v1",
 		Kind:       "Config",
@@ -95,8 +104,8 @@ func generateKubeConfig(cluster *rocketv1alpha1.Cluster) *clientcmdapiv1.Config 
 			{
 				Name: cluster.Name,
 				Cluster: clientcmdapiv1.Cluster{
-					Server:                   cluster.Spec.APIServer,
-					CertificateAuthorityData: cluster.Spec.CAData,
+					Server:                   cluster.APIServer,
+					CertificateAuthorityData: []byte(cluster.CAData),
 				},
 			},
 		},
@@ -104,9 +113,9 @@ func generateKubeConfig(cluster *rocketv1alpha1.Cluster) *clientcmdapiv1.Config 
 			{
 				Name: cluster.Name,
 				AuthInfo: clientcmdapiv1.AuthInfo{
-					ClientCertificateData: cluster.Spec.CertData,
-					ClientKeyData:         cluster.Spec.KeyData,
-					Token:                 string(cluster.Spec.Token),
+					ClientCertificateData: []byte(cluster.CertData),
+					ClientKeyData:         []byte(cluster.KeyData),
+					Token:                 string(cluster.Token),
 				},
 			},
 		},

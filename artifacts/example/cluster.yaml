@@ -1,0 +1,4 @@
+name: test1
+region: beijing
+cloudArea: public
+agent: false

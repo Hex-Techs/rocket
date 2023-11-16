@@ -23,6 +23,10 @@ func ConvertToUnstructured(resourceObject runtime.Object) (resource *unstructure
 	}
 }
 
+func ConvertToObject(resource *unstructured.Unstructured, obj runtime.Object) error {
+	return runtime.DefaultUnstructuredConverter.FromUnstructured(resource.Object, obj)
+}
+
 // NeedToUpdate returns true if the new object has to be updated.
 // This is determined by comparing the old object with the new one.
 // The old object is the one currently stored in the cluster, while the new one is the one

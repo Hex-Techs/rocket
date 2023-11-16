@@ -1,11 +1,11 @@
 package scheduler
 
 import (
-	"context"
 	"fmt"
 	"time"
 
-	rocketv1alpha1 "github.com/hex-techs/rocket/api/v1alpha1"
+	"github.com/fize/go-ext/log"
+	"github.com/hex-techs/rocket/pkg/models/cluster"
 	schedcache "github.com/hex-techs/rocket/pkg/scheduler/cache"
 	"github.com/hex-techs/rocket/pkg/utils/tools"
 	v1 "k8s.io/api/core/v1"
@@ -14,7 +14,6 @@ import (
 	"k8s.io/client-go/kubernetes"
 	corev1listers "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 const (
@@ -45,20 +44,18 @@ type clusterCache struct {
 }
 
 func (cc *clusterCache) addPodToCache(obj interface{}) {
-	log := log.FromContext(context.Background())
 	pod, ok := obj.(*v1.Pod)
 	if !ok {
 		log.Error(nil, "Cannot convert to *v1.Pod", "obj", obj)
 		return
 	}
-	log.V(4).Info("Add event for scheduled pod", "pod", tools.KObj(pod))
+	log.Debugw("Add event for scheduled pod", "pod", tools.KObj(pod))
 	if err := cc.schedCache.AddPod(pod); err != nil {
 		log.Error(err, "Scheduler cache AddPod failed", "pod", tools.KObj(pod))
 	}
 }
 
 func (sched *clusterCache) updatePodInCache(oldObj, newObj interface{}) {
-	log := log.FromContext(context.Background())
 	oldPod, ok := oldObj.(*v1.Pod)
 	if !ok {
 		log.Error(nil, "Cannot convert oldObj to *v1.Pod", "oldObj", oldObj)
@@ -69,15 +66,13 @@ func (sched *clusterCache) updatePodInCache(oldObj, newObj interface{}) {
 		log.Error(nil, "Cannot convert newObj to *v1.Pod", "newObj", newObj)
 		return
 	}
-	log.V(4).Info("Update event for scheduled pod", "pod", tools.KObj(oldPod))
-
+	log.Debugw("Update event for scheduled pod", "pod", tools.KObj(oldPod))
 	if err := sched.schedCache.UpdatePod(oldPod, newPod); err != nil {
 		log.Error(err, "Scheduler cache UpdatePod failed", "pod", tools.KObj(oldPod))
 	}
 }
 
 func (sched *clusterCache) deletePodFromCache(obj interface{}) {
-	log := log.FromContext(context.Background())
 	var pod *v1.Pod
 	switch t := obj.(type) {
 	case *v1.Pod:
@@ -93,14 +88,13 @@ func (sched *clusterCache) deletePodFromCache(obj interface{}) {
 		log.Error(nil, "Cannot convert to *v1.Pod", "obj", t)
 		return
 	}
-	log.V(4).Info("Delete event for scheduled pod", "pod", tools.KObj(pod))
+	log.Debugw("Delete event for scheduled pod", "pod", tools.KObj(pod))
 	if err := sched.schedCache.RemovePod(pod); err != nil {
 		log.Error(err, "Scheduler cache RemovePod failed", "pod", tools.KObj(pod))
 	}
 }
 
 func (sched *clusterCache) addNodeToCache(obj interface{}) {
-	log := log.FromContext(context.Background())
 	node, ok := obj.(*v1.Node)
 	if !ok {
 		log.Error(nil, "Cannot convert to *v1.Node", "obj", obj)
@@ -108,11 +102,10 @@ func (sched *clusterCache) addNodeToCache(obj interface{}) {
 	}
 
 	sched.schedCache.AddNode(node)
-	log.V(4).Info("Add event for node", "node", tools.KObj(node))
+	log.Debugw("Add event for node", "node", tools.KObj(node))
 }
 
 func (sched *clusterCache) updateNodeInCache(oldObj, newObj interface{}) {
-	log := log.FromContext(context.Background())
 	oldNode, ok := oldObj.(*v1.Node)
 	if !ok {
 		log.Error(nil, "Cannot convert oldObj to *v1.Node", "oldObj", oldObj)
@@ -127,7 +120,6 @@ func (sched *clusterCache) updateNodeInCache(oldObj, newObj interface{}) {
 }
 
 func (sched *clusterCache) deleteNodeFromCache(obj interface{}) {
-	log := log.FromContext(context.Background())
 	var node *v1.Node
 	switch t := obj.(type) {
 	case *v1.Node:
@@ -143,7 +135,7 @@ func (sched *clusterCache) deleteNodeFromCache(obj interface{}) {
 		log.Error(nil, "Cannot convert to *v1.Node", "obj", t)
 		return
 	}
-	log.V(4).Info("Delete event for node", "node", tools.KObj(node))
+	log.Debugw("Delete event for node", "node", tools.KObj(node))
 	if err := sched.schedCache.RemoveNode(node); err != nil {
 		log.Error(err, "Scheduler cache RemoveNode failed")
 	}
@@ -151,16 +143,15 @@ func (sched *clusterCache) deleteNodeFromCache(obj interface{}) {
 
 // NewClusterCache return a new clusterCache。
 func NewClusterCache(
-	cluster *rocketv1alpha1.Cluster,
+	cls *cluster.Cluster,
 	kubeclientset kubernetes.Interface,
 	nodeInformer corev1informers.NodeInformer,
 	podInformer corev1informers.PodInformer) *clusterCache {
 	stop := make(chan struct{})
 	clusterCacheController := &clusterCache{
-		name:        cluster.Name,
-		region:      cluster.Spec.Region,
-		area:        cluster.Spec.CloudArea,
-		Taint:       cluster.Spec.Taints,
+		name:        cls.Name,
+		region:      cls.Region,
+		area:        cls.CloudArea,
 		schedCache:  schedcache.New(durationToExpireAssumedPod, stop),
 		client:      kubeclientset,
 		nodesLister: nodeInformer.Lister(),

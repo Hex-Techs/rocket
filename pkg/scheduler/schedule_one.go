@@ -7,17 +7,18 @@ import (
 	"sort"
 
 	mapset "github.com/deckarep/golang-set/v2"
-	rocketv1alpha1 "github.com/hex-techs/rocket/api/v1alpha1"
+	"github.com/fize/go-ext/log"
+	agentapp "github.com/hex-techs/rocket/pkg/agent/application"
+	"github.com/hex-techs/rocket/pkg/models/application"
 	"github.com/hex-techs/rocket/pkg/scheduler/filter"
-	"github.com/hex-techs/rocket/pkg/utils/gvktools"
 	"github.com/hex-techs/rocket/pkg/utils/tools"
+	"github.com/hex-techs/rocket/pkg/utils/web"
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/types"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	v1helper "k8s.io/component-helpers/scheduling/corev1"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 type ClusterResult struct {
@@ -31,35 +32,30 @@ type ClusterResult struct {
 	Area string `json:"area,omitempty"`
 }
 
-func (r *SchedulerReconciler) scheduler(ctx context.Context, application *rocketv1alpha1.Application) []ClusterResult {
-	log := log.FromContext(ctx)
+func (r *SchedulerReconciler) scheduler(ctx context.Context, application *application.Application) []ClusterResult {
 	if len(r.schedCache) == 0 {
-		log.V(3).Info("no cluster can be scheduled", "application", tools.KObj(application))
+		log.Info("no cluster can be scheduled", "application", tools.KObj(application))
 	}
 	var scoreMap = []ClusterResult{}
 	regions := mapset.NewSet[string]()
-	for i := range application.Spec.Regions {
-		regions.Add(application.Spec.Regions[i])
+	for i := range application.Regions {
+		regions.Add(application.Regions[i])
 	}
 	area, err := r.areaEnv(application.Name, application.Namespace)
 	if err != nil {
-		log.Error(err, "unable to scheduler application", "application", tools.KObj(application))
-		r.recoder.Eventf(application, v1.EventTypeWarning, "SchedulerFailed",
-			"unable to scheduler application '%s/%s' and got error: %v", application.Namespace, application.Name, err)
+		log.Errorw("unable to scheduler application", "application", tools.KObj(application), "error", err)
 		return scoreMap
 	}
 	p, err := newPod(ctx, application)
 	if err != nil {
-		log.Error(err, "unable to scheduler application", "application", tools.KObj(application))
-		r.recoder.Eventf(application, v1.EventTypeWarning, "SchedulerFailed",
-			"unable to scheduler application '%s/%s' and got error: %v", application.Namespace, application.Name, err)
+		log.Errorw("unable to scheduler application", "application", tools.KObj(application), "error", err)
 		return scoreMap
 	}
 	r.lock.RLock()
 	defer r.lock.RUnlock()
-	log.V(3).Info("Attempting to schedule application", "application", tools.KObj(application))
+	log.Debug("Attempting to schedule application", "application", tools.KObj(application))
 	for _, cluster := range r.schedCache {
-		if !clusterTolerateFilter(cluster.Taint, application.Spec.Tolerations) {
+		if !clusterTolerateFilter(cluster.Taint, r.generateTolerations(application)) {
 			continue
 		}
 		if !regions.Contains(cluster.region) || cluster.area != area {
@@ -72,38 +68,43 @@ func (r *SchedulerReconciler) scheduler(ctx context.Context, application *rocket
 		}
 		scoreMap = append(scoreMap, *result)
 	}
-	log.V(3).Info("scheduler application in selected", "application", tools.KObj(application), "allScore", scoreMap)
+	log.Debug("scheduler application in selected", "application", tools.KObj(application), "allScore", scoreMap)
 	scoreMap = r.removeNotMatchCluster(application, scoreMap)
 	s := sortResult{d: scoreMap}
 	sort.Sort(s)
-	log.V(3).Info("scheduler application done", "application", tools.KObj(application), "resultScore", s.d)
+	log.Debug("scheduler application done", "application", tools.KObj(application), "resultScore", s.d)
 	return s.d
 }
 
+// TODO: ignore toleration for application just now
+func (r *SchedulerReconciler) generateTolerations(app *application.Application) []v1.Toleration {
+	tolerations := []v1.Toleration{}
+	return tolerations
+}
+
 func (r *SchedulerReconciler) areaEnv(name, namespace string) (area string, err error) {
-	app := rocketv1alpha1.Application{}
-	err = r.Get(context.TODO(), types.NamespacedName{Name: name, Namespace: namespace}, &app)
+	app := application.Application{}
+	err = r.Get(name, &web.Request{Namespace: namespace}, &app)
 	if err != nil {
 		return "", err
 	}
-	if app.Spec.CloudArea == "" {
+	if app.CloudArea == "" {
 		return "", fmt.Errorf("%s cloud area is empty", name)
 	}
-	if app.Spec.Environment == "" {
+	if app.Environment == "" {
 		return "", fmt.Errorf("%s environment is empty", name)
 	}
-	return app.Spec.CloudArea, nil
+	return app.CloudArea, nil
 }
 
 func (r *SchedulerReconciler) scheddulePod(ctx context.Context, clustername string, pod *v1.Pod) (result *ClusterResult, err error) {
-	log := log.FromContext(ctx)
 	if _, ok := r.snapshot[clustername]; !ok {
 		return result, fmt.Errorf("cluster %s not found in snapshot, will retry", clustername)
 	}
 	if err := r.schedCache[clustername].schedCache.UpdateSnapshot(r.snapshot[clustername]); err != nil {
 		return result, err
 	}
-	log.V(5).Info("Snapshotting scheduler cache and node infos done")
+	log.Debug("Snapshotting scheduler cache and node infos done")
 	if r.snapshot[clustername].NumNodes() == 0 {
 		return result, fmt.Errorf("cluster %s has no available nodes", clustername)
 	}
@@ -116,6 +117,7 @@ func (r *SchedulerReconciler) scheddulePod(ctx context.Context, clustername stri
 		Region: r.schedCache[clustername].region,
 		Area:   string(r.schedCache[clustername].area),
 	}
+	log.Infow("Pod scheduler", "Pod", pod)
 	for _, n := range allNodes {
 		if filter.Filter(ctx, pod, n) {
 			result.Score = result.Score + filter.Score(ctx, pod, n)
@@ -124,12 +126,13 @@ func (r *SchedulerReconciler) scheddulePod(ctx context.Context, clustername stri
 	return result, nil
 }
 
-func (r *SchedulerReconciler) removeNotMatchCluster(application *rocketv1alpha1.Application, scoreMap []ClusterResult) []ClusterResult {
+func (r *SchedulerReconciler) removeNotMatchCluster(application *application.Application, scoreMap []ClusterResult) []ClusterResult {
 	desired := 1
-	replicas := application.Spec.Replicas
-	if replicas != nil {
-		desired = int(*replicas)
-	}
+	// TODO: 设置 replicas
+	// replicas := application.Replicas
+	// if replicas != nil {
+	// 	desired = int(*replicas)
+	// }
 	result := []ClusterResult{}
 	// 将不符合replicas要求的集群剔除
 	for _, cluster := range scoreMap {
@@ -140,16 +143,15 @@ func (r *SchedulerReconciler) removeNotMatchCluster(application *rocketv1alpha1.
 	return result
 }
 
-func newPod(ctx context.Context, application *rocketv1alpha1.Application) (*v1.Pod, error) {
-	log := log.FromContext(ctx)
+func newPod(ctx context.Context, application *application.Application) (*v1.Pod, error) {
 	pod := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      application.Name,
+			Namespace: application.Namespace,
+		},
 		Spec: v1.PodSpec{},
 	}
-	resource, gvk, err := gvktools.GetResourceAndGvkFromApplication(application)
-	if err != nil {
-		return nil, err
-	}
-	gvr := gvktools.SetGVRForApplication(gvk)
+	gvr, resource := agentapp.GenerateWorkload(application)
 	b, _ := json.Marshal(resource)
 	switch gvr.Resource {
 	case "deployments":
@@ -165,14 +167,13 @@ func newPod(ctx context.Context, application *rocketv1alpha1.Application) (*v1.P
 		json.Unmarshal(b, cj)
 		pod.Spec = cj.Spec.JobTemplate.Spec.Template.Spec
 	default:
-		log.V(4).Info("no resource found", "got resource", gvr.Resource)
+		log.Infow("no resource found", "got resource", gvr.Resource)
 	}
 	return pod, nil
 }
 
 // 集群污点与容忍
 func clusterTolerateFilter(taints []v1.Taint, tolerations []v1.Toleration) bool {
-	log := log.FromContext(context.Background())
 	filterPredicate := func(t *v1.Taint) bool {
 		// PodToleratesNodeTaints is only interested in NoSchedule and NoExecute taints.
 		return t.Effect == v1.TaintEffectNoSchedule || t.Effect == v1.TaintEffectNoExecute
@@ -182,7 +183,7 @@ func clusterTolerateFilter(taints []v1.Taint, tolerations []v1.Toleration) bool 
 	if !isUntolerated {
 		return true
 	}
-	log.V(4).Info("clusterhad taint, that the application didn't tolerate",
+	log.Infow("clusterhad taint, that the application didn't tolerate",
 		"key", taint.Key, "value", taint.Value)
 	return false
 }

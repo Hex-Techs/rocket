@@ -1,114 +1,140 @@
-/*
-Copyright 2021.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
 package main
 
 import (
-	"flag"
+	"context"
+	"fmt"
+	"net/http"
 	"os"
+	"os/signal"
+	"path/filepath"
+	"syscall"
+	"time"
 
-	rocketv1alpha1 "github.com/hex-techs/rocket/api/v1alpha1"
+	"github.com/fize/go-ext/log"
+	"github.com/gin-gonic/gin"
+	"github.com/hex-techs/rocket/pkg/cache"
 	"github.com/hex-techs/rocket/pkg/manager"
+	"github.com/hex-techs/rocket/pkg/models/application"
+	"github.com/hex-techs/rocket/pkg/models/cerificateauthority"
+	"github.com/hex-techs/rocket/pkg/models/cluster"
+	"github.com/hex-techs/rocket/pkg/models/module"
+	"github.com/hex-techs/rocket/pkg/models/project"
+	"github.com/hex-techs/rocket/pkg/models/publicresource"
+	"github.com/hex-techs/rocket/pkg/models/revisionmanager"
 	"github.com/hex-techs/rocket/pkg/utils/config"
-	"github.com/hex-techs/rocket/pkg/webhook"
-	kruiseapi "github.com/openkruise/kruise-api"
-	"github.com/spf13/pflag"
-	"k8s.io/apimachinery/pkg/runtime"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
-	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/healthz"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-
-	_ "k8s.io/client-go/plugin/pkg/client/auth"
+	"github.com/hex-techs/rocket/pkg/utils/storage"
+	flag "github.com/spf13/pflag"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
-var (
-	scheme   = runtime.NewScheme()
-	setupLog = ctrl.Log.WithName("setup")
-)
-
-func init() {
-	//+kubebuilder:scaffold:scheme
-	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-	utilruntime.Must(rocketv1alpha1.AddToScheme(scheme))
-	utilruntime.Must(kruiseapi.AddToScheme(scheme))
-}
+const defaultTimeout = 1 * time.Second
 
 func main() {
-	param := new(config.CommandParam)
-	var metricsAddr string
-	var enableLeaderElection bool
-	var probeAddr string
-	var enabledControllers []string
-	var disabledWebhook bool
-	pflag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
-	pflag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
-	pflag.BoolVar(&enableLeaderElection, "leader-elect", false,
-		"Enable leader election for controller manager. "+
-			"Enabling this will ensure there is only one active controller manager.")
-	pflag.BoolVar(&disabledWebhook, "disabled-webhook", false, "Disable webhook server.")
-	pflag.StringSliceVar(&enabledControllers, "enabled-controllers", []string{}, "The controller which will start.")
-	pflag.IntVar(&param.TimeOut, "timeout", 360, "The heartbeet interval time, default: 360.")
-	config.LogOpts.BindFlags(flag.CommandLine)
-	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
-	pflag.Parse()
+	var configFile string
+	flag.StringVarP(&configFile, "config", "c", "./config.yaml", "config file path")
+	flag.Parse()
+	dir := filepath.Dir(configFile)
+	fileName := filepath.Base(configFile)
+	cache.InitCommunicationManager()
+	r := initServer(dir, fileName)
+	run(r)
+}
 
-	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&config.LogOpts)))
-	config.Set(param)
+func run(r *gin.Engine) {
+	srv := &http.Server{
+		Addr:    fmt.Sprintf(":%d", config.Read().Manager.ServerPort),
+		Handler: r,
+	}
+	go func() {
+		log.Infof("start manager on :%d", config.Read().Manager.ServerPort)
+		err := srv.ListenAndServe()
+		if err != nil && err != http.ErrServerClosed {
+			log.Fatalf("start manager with error: %s\n", err)
+		}
+	}()
+	time.Sleep(1 * time.Second)
+	// Wait for interrupt signal to gracefully shutdown the server with
+	// a timeout of 5 seconds.
+	quit := make(chan os.Signal)
+	// kill (no param) default send syscanll.SIGTERM
+	// kill -2 is syscall.SIGINT
+	// kill -9 is syscall. SIGKILL but can"t be catch, so don't need add it
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	log.Info("Shutdown Server ...")
+	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Fatal("Server Shutdown:", err)
+	}
+	// catching ctx.Done(). timeout of 5 seconds.
+	select {
+	case <-ctx.Done():
+		log.Infof("timeout of %v.", defaultTimeout)
+	}
+	log.Info("Server exiting")
+}
 
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		Scheme:                 scheme,
-		MetricsBindAddress:     metricsAddr,
-		Port:                   9443,
-		HealthProbeBindAddress: probeAddr,
-		LeaderElection:         enableLeaderElection,
-		LeaderElectionID:       "3a6b3e50.hextech.io",
-	})
-	if err != nil {
-		setupLog.Error(err, "unable to start manager")
-		os.Exit(1)
+func initServer(dir, name string) *gin.Engine {
+	if err := config.Load(dir, name, false); err != nil {
+		panic(err)
 	}
 
-	// 启动 controller
-	manager.Init(mgr)
-	if err = manager.InitController(mgr, enabledControllers); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "Hex-Techs")
-		os.Exit(1)
+	logger := log.InitLogger()
+	defer logger.Sync()
+	s := storage.NewEngine(config.Read().DB.Host, config.Read().DB.DB, config.Read().DB.User, config.Read().DB.Password)
+	initDB(s)
+	fakerDate(s)
+	var r *gin.Engine
+	if config.Read().Log.Level != "trace" {
+		gin.SetMode(gin.ReleaseMode)
+		r = gin.New()
+		r.Use(gin.Recovery())
+	} else {
+		r = gin.Default()
 	}
+	manager.InstallAPI(r, s)
+	return r
+}
 
-	// 启动 webhook
-	if !disabledWebhook {
-		webhook.InitWebhook(mgr)
+func initDB(s *storage.Engine) {
+	log.Info("initializing database...")
+	db := s.Client().(*gorm.DB)
+	// 设置gorm日志模式
+	if config.Read().DB.SqlDebug {
+		db.Config.Logger = logger.Default.LogMode(logger.Info)
+	} else {
+		db.Config.Logger = logger.Default.LogMode(logger.Warn)
 	}
-
-	//+kubebuilder:scaffold:builder
-
-	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
-		setupLog.Error(err, "unable to set up health check")
-		os.Exit(1)
+	// 设置连接池
+	if config.Read().DB.MaxIdleConns != 0 {
+		c, _ := db.DB()
+		c.SetMaxIdleConns(config.Read().DB.MaxIdleConns)
 	}
-	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
-		setupLog.Error(err, "unable to set up ready check")
-		os.Exit(1)
+	if config.Read().DB.MaxOpenConns != 0 {
+		c, _ := db.DB()
+		c.SetMaxOpenConns(config.Read().DB.MaxOpenConns)
 	}
+	// migrate
+	if err := db.AutoMigrate(&cerificateauthority.User{}, &project.Project{},
+		&module.Module{}, &revisionmanager.RevisionManager{}, &publicresource.PublicResource{},
+		&cluster.Cluster{}, &application.Application{}); err != nil {
+		log.Fatalf("auto migrate table error: %v", err)
+	}
+	log.Info("initialize database success")
+}
 
-	setupLog.Info("starting manager")
-	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
-		setupLog.Error(err, "problem running manager")
-		os.Exit(1)
+func fakerDate(s *storage.Engine) {
+	if config.Read().FakerDate {
+		prs := publicresource.FakeData(5)
+		if err := s.Create(context.Background(), &prs); err != nil {
+			log.Warnf("create public resource error: %v", err)
+		}
+
+		cas := cerificateauthority.FakeData(10)
+		if err := s.Create(context.Background(), &cas); err != nil {
+			log.Warnf("create certificate authority error: %v", err)
+		}
 	}
 }

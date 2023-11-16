@@ -1,0 +1,7 @@
+name: test
+displayName: 测试
+language: go
+framework: gin
+moduleID: 4
+cpuRequirement: "2"
+memoryRequirement: 4Gi
