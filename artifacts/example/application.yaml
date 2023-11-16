@@ -8,6 +8,11 @@ spec:
   cloudArea: public
   environment: test
   replicas: 2
+  traits:
+  - kind: "service"
+    template: '{"ports": [{"name": "http", "port": 8080, "targetPort": 80}]}'
+  - kind: podunavailablebudget
+    template: '{"maxUnavailable": 1}'
   template:
     apiVersion: apps/v1
     kind: Deployment

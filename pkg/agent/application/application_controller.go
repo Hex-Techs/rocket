@@ -254,6 +254,7 @@ func (c *Controller) syncHandler(key string) error {
 		}
 		return c.updateApplicationStatus(application)
 	}
+	application.Status.Type = gvr.Resource
 	old, err := c.dynamicclientset.Resource(gvr).Namespace(application.Namespace).Get(context.TODO(), application.Name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -275,7 +276,6 @@ func (c *Controller) syncHandler(key string) error {
 				c.applicationConditionsUpdate(application, metav1.ConditionFalse, constant.ReasonTraitSynced, err.Error())
 				log.Error(err, "handle trait failed", "workload", tools.KObj(resource), "application", tools.KObj(application))
 			}
-			application.Status.Type = gvr.Resource
 			return c.updateApplicationStatus(application)
 		}
 		return err
@@ -302,8 +302,6 @@ func (c *Controller) syncHandler(key string) error {
 			log.Error(err, "handle trait failed", "workload", tools.KObj(resource), "application", tools.KObj(application))
 		}
 	}
-	log.V(0).Info("origin data", "new application", resource)
-	log.V(0).Info("origin data", "old application", old)
 	return c.updateApplicationStatus(application)
 }
 

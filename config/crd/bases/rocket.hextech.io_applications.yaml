@@ -23,7 +23,7 @@ spec:
   versions:
   - additionalPrinterColumns:
     - jsonPath: .status.type
-      name: WORKLOADTYPE
+      name: TYPE
       type: string
     - jsonPath: .spec.cloudArea
       name: AREA

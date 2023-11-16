@@ -144,7 +144,7 @@ type ApplicationCondition struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:shortName=app;apps,scope=Namespaced,categories=app;apps
-// +kubebuilder:printcolumn:name="WORKLOADTYPE",priority=0,type=string,JSONPath=`.status.type`
+// +kubebuilder:printcolumn:name="TYPE",priority=0,type=string,JSONPath=`.status.type`
 // +kubebuilder:printcolumn:name="AREA",priority=0,type=string,JSONPath=`.spec.cloudArea`
 // +kubebuilder:printcolumn:name="REGION",priority=0,type=string,JSONPath=`.spec.regions[*]`
 // +kubebuilder:printcolumn:name="EVNIRONMENT",priority=0,type=string,JSONPath=`.spec.environment`

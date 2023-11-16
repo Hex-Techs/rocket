@@ -37,12 +37,7 @@ func (*ServiceTrait) Generate(ttemp *rocketv1alpha1.Trait, obj interface{}) erro
 	s := &v1.ServiceSpec{
 		Ports: []v1.ServicePort{},
 	}
-	for _, p := range svc.Ports {
-		s.Ports = append(s.Ports, v1.ServicePort{
-			Name:       p.Name,
-			TargetPort: p.TargetPort,
-		})
-	}
+	s.Ports = svc.Ports
 	if svc.Headless {
 		s.ClusterIP = "None"
 	}

@@ -7,6 +7,7 @@ import (
 
 	mapset "github.com/deckarep/golang-set/v2"
 	rocketv1alpha1 "github.com/hex-techs/rocket/api/v1alpha1"
+	"github.com/hex-techs/rocket/pkg/utils/gvktools"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
@@ -16,12 +17,20 @@ type ApplicationAnnotator struct {
 	decoder *admission.Decoder
 }
 
-// TODO: reject unsuporrted kind
+var kindSet = mapset.NewSet[string]("Deployment", "CloneSet", "CronJob")
+
 func (a *ApplicationAnnotator) Handle(ctx context.Context, req admission.Request) admission.Response {
 	app := &rocketv1alpha1.Application{}
 	err := a.decoder.Decode(req, app)
 	if err != nil {
 		return admission.Errored(http.StatusBadRequest, err)
+	}
+	_, gvk, err := gvktools.GetResourceAndGvkFromApplication(app)
+	if err != nil {
+		return admission.Errored(http.StatusBadRequest, err)
+	}
+	if !kindSet.Contains(gvk.Kind) {
+		return admission.Errored(http.StatusBadRequest, fmt.Errorf("%s is not supported", gvk.Kind))
 	}
 	// a application can not have two same trait
 	tset := mapset.NewSet[string]()

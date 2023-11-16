@@ -123,7 +123,7 @@ func (r *SchedulerReconciler) doReconcile(ctx context.Context, application *rock
 	r.recoder.Eventf(application, v1.EventTypeNormal, "Scheduling", "Start scheduling application %s/%s", application.Namespace, application.Name)
 	result := r.scheduler(schedulingCycleCtx, application)
 	if len(result) == 0 {
-		log.Error(nil, "unable to scheduler application", "application", tools.KObj(application))
+		log.V(0).Info("unable to scheduler application because no cluster can be scheduled", "application", tools.KObj(application))
 		r.recoder.Eventf(application, v1.EventTypeWarning, "SchedulerFailed",
 			"unable to scheduler application '%s/%s' because no cluster can be scheduled", application.Namespace, application.Name)
 		return false

@@ -15,6 +15,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	v1helper "k8s.io/component-helpers/scheduling/corev1"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -116,6 +117,7 @@ func (r *SchedulerReconciler) scheddulePod(ctx context.Context, clustername stri
 		Region: r.schedCache[clustername].region,
 		Area:   string(r.schedCache[clustername].area),
 	}
+	log.V(0).Info("Pod scheduler", "Pod", pod)
 	for _, n := range allNodes {
 		if filter.Filter(ctx, pod, n) {
 			result.Score = result.Score + filter.Score(ctx, pod, n)
@@ -143,6 +145,10 @@ func (r *SchedulerReconciler) removeNotMatchCluster(application *rocketv1alpha1.
 func newPod(ctx context.Context, application *rocketv1alpha1.Application) (*v1.Pod, error) {
 	log := log.FromContext(ctx)
 	pod := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      application.Name,
+			Namespace: application.Namespace,
+		},
 		Spec: v1.PodSpec{},
 	}
 	resource, gvk, err := gvktools.GetResourceAndGvkFromApplication(application)

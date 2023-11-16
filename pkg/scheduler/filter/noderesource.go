@@ -29,7 +29,6 @@ func resourceFilter(ctx context.Context, pod *v1.Pod, nodeInfo *framework.NodeIn
 	if rtwm == nil {
 		return 0, errors.New("resources not found")
 	}
-
 	requested := make(resourceToValueMap)
 	allocatable := make(resourceToValueMap)
 	request := make(resourceToValueMap)
